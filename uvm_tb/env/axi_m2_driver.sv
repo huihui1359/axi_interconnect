@@ -8,7 +8,7 @@ class axi_m_driver #(
   `uvm_component_utils_begin(axi_m_driver#(WIDTH, SIZE))
   `uvm_component_utils_end
   
-   axi_subscriber#(WIDTH, SIZE) sub;
+   axi_funcov#(WIDTH, SIZE) sub;
 
   virtual interface axi_intf #(WIDTH, SIZE) intf;
 
@@ -33,7 +33,7 @@ class axi_m_driver #(
     drv2sb_port2 = new("drv2sb_port2", this);
   //  drv2sb_portM2 = new("drv2sb_portM2", this);
   //  drv2sb_portS = new("drv2sb_portS", this);
-	sub = axi_subscriber#(WIDTH, SIZE)::type_id::create("sub", this);
+	sub = axi_funcov#(WIDTH, SIZE)::type_id::create("sub", this);
   endfunction : build_phase
 
 

@@ -5,10 +5,9 @@ class axi_m_driver #(
     SIZE = 3
 ) extends uvm_driver#(axi_transaction#(WIDTH, SIZE));
 
-  `uvm_component_utils_begin(axi_m_driver#(WIDTH, SIZE))
-  `uvm_component_utils_end
+  `uvm_component_param_utils(axi_m_driver#(WIDTH,SIZE))
   
-   axi_subscriber#(WIDTH, SIZE) sub;
+  axi_funcov#(WIDTH, SIZE) sub; //functional coverage collect
 
   virtual interface axi_intf #(WIDTH, SIZE) intf;
 
@@ -31,7 +30,7 @@ class axi_m_driver #(
     super.build_phase(phase);
     drv2sb_port1 = new("drv2sb_port1", this);
     drv2sb_port2 = new("drv2sb_port2", this);
-	sub = axi_subscriber#(WIDTH, SIZE)::type_id::create("sub", this);
+	sub = axi_funcov#(WIDTH, SIZE)::type_id::create("sub", this);
   endfunction : build_phase
 
 

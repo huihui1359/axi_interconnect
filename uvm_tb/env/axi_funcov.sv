@@ -1,6 +1,6 @@
-class axi_subscriber#(int WIDTH=32,SIZE=3) extends uvm_subscriber#(virtual axi_intf#(WIDTH,SIZE));
+class axi_funcov#(int WIDTH=32,SIZE=3) extends uvm_subscriber#(virtual axi_intf#(WIDTH,SIZE));
   
-  `uvm_component_param_utils(axi_subscriber#(WIDTH,SIZE))
+  `uvm_component_param_utils(axi_funcov#(WIDTH,SIZE))
  
   virtual axi_intf#(WIDTH,SIZE) tx;
   bit [(WIDTH/8)-1:0] wstrb;
@@ -182,7 +182,7 @@ class axi_subscriber#(int WIDTH=32,SIZE=3) extends uvm_subscriber#(virtual axi_i
 
      endgroup
 
-  function new(string name="axi_subscriber",uvm_component parent);
+  function new(string name="axi_funcov",uvm_component parent);
     super.new(name,parent);
     AXI_cg = new();
     AXI_STRB_cg=new();
@@ -201,6 +201,5 @@ class axi_subscriber#(int WIDTH=32,SIZE=3) extends uvm_subscriber#(virtual axi_i
       end
 	endtask 
 endclass
-
 
 

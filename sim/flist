@@ -21,7 +21,7 @@
 ./../uvm_tb/env/axi_m_sequencer.sv 
 ./../uvm_tb/env/axi_virtual_sequencer.sv
 ./../uvm_tb/env/axi_virtual_sequence.sv
-./../uvm_tb/env/axi_subscriber.sv
+./../uvm_tb/env/axi_funcov.sv
 ./../uvm_tb/env/axi_m_driver.sv
 ./../uvm_tb/env/axi_m_monitor.sv
 ./../uvm_tb/env/axi_m_agent.sv
@@ -56,5 +56,4 @@
 ./../uvm_tb/tc/Mx_to_s_write_arbiter_test.sv
 ./../uvm_tb/tc/default_read_arbiter_test.sv
 ./../uvm_tb/tc/default_write_arbiter_test.sv
-
 
