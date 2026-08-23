@@ -19,7 +19,7 @@ module axi_mtos_m3
      , input   wire  [2-1:0]             M0_MID
      , input   wire  [WIDTH_ID-1:0]      M0_AWID
      , input   wire  [WIDTH_AD-1:0]      M0_AWADDR
-     , input   wire  [7:0]               M0_AWLEN
+     , input   wire  [3:0]               M0_AWLEN
      , input   wire  [2:0]               M0_AWSIZE
      , input   wire  [1:0]               M0_AWBURST
      , input   wire                      M0_AWVALID
@@ -32,7 +32,7 @@ module axi_mtos_m3
      , output  wire                      M0_WREADY
      , input   wire  [WIDTH_ID-1:0]      M0_ARID
      , input   wire  [WIDTH_AD-1:0]      M0_ARADDR
-     , input   wire  [7:0]               M0_ARLEN
+     , input   wire  [3:0]               M0_ARLEN
      , input   wire  [2:0]               M0_ARSIZE
      , input   wire  [1:0]               M0_ARBURST
      , input   wire                      M0_ARVALID
@@ -41,7 +41,7 @@ module axi_mtos_m3
      , input   wire  [2-1:0]             M1_MID
      , input   wire  [WIDTH_ID-1:0]      M1_AWID
      , input   wire  [WIDTH_AD-1:0]      M1_AWADDR
-     , input   wire  [7:0]               M1_AWLEN
+     , input   wire  [3:0]               M1_AWLEN
      , input   wire  [2:0]               M1_AWSIZE
      , input   wire  [1:0]               M1_AWBURST
      , input   wire                      M1_AWVALID
@@ -54,7 +54,7 @@ module axi_mtos_m3
      , output  wire                      M1_WREADY
      , input   wire  [WIDTH_ID-1:0]      M1_ARID
      , input   wire  [WIDTH_AD-1:0]      M1_ARADDR
-     , input   wire  [7:0]               M1_ARLEN
+     , input   wire  [3:0]               M1_ARLEN
      , input   wire  [2:0]               M1_ARSIZE
      , input   wire  [1:0]               M1_ARBURST
      , input   wire                      M1_ARVALID
@@ -63,7 +63,7 @@ module axi_mtos_m3
      , input   wire  [2-1:0]             M2_MID
      , input   wire  [WIDTH_ID-1:0]      M2_AWID
      , input   wire  [WIDTH_AD-1:0]      M2_AWADDR
-     , input   wire  [7:0]               M2_AWLEN
+     , input   wire  [3:0]               M2_AWLEN
      , input   wire  [2:0]               M2_AWSIZE
      , input   wire  [1:0]               M2_AWBURST
      , input   wire                      M2_AWVALID
@@ -76,7 +76,7 @@ module axi_mtos_m3
      , output  wire                      M2_WREADY
      , input   wire  [WIDTH_ID-1:0]      M2_ARID
      , input   wire  [WIDTH_AD-1:0]      M2_ARADDR
-     , input   wire  [7:0]               M2_ARLEN
+     , input   wire  [3:0]               M2_ARLEN
      , input   wire  [2:0]               M2_ARSIZE
      , input   wire  [1:0]               M2_ARBURST
      , input   wire                      M2_ARVALID
@@ -84,7 +84,7 @@ module axi_mtos_m3
 
      , output  reg    [WIDTH_SID-1:0]    S_AWID
      , output  reg    [WIDTH_AD-1:0]     S_AWADDR
-     , output  reg    [7:0]              S_AWLEN
+     , output  reg    [3:0]              S_AWLEN
      , output  reg    [2:0]              S_AWSIZE
      , output  reg    [1:0]              S_AWBURST
      , output  reg                       S_AWVALID
@@ -97,7 +97,7 @@ module axi_mtos_m3
      , input   wire                      S_WREADY
      , output  reg    [WIDTH_SID-1:0]    S_ARID
      , output  reg    [WIDTH_AD-1:0]     S_ARADDR
-     , output  reg    [7:0]              S_ARLEN
+     , output  reg    [3:0]              S_ARLEN
      , output  reg    [2:0]              S_ARSIZE
      , output  reg    [1:0]              S_ARBURST
      , output  reg                       S_ARVALID
@@ -178,9 +178,9 @@ u_axi_arbiter_mtos_m3 (
 
 );
 
-localparam NUM_AW_WIDTH = WIDTH_SID + WIDTH_AD + 8 + 3 + 2 + 1;  //S_AWID S_AWADDR S_AWLEN S_AWLOCK S_AWSIZE S_AWBURST S_AWVALID
+localparam NUM_AW_WIDTH = WIDTH_SID + WIDTH_AD + 4 + 3 + 2 + 1;  //S_AWID S_AWADDR S_AWLEN S_AWSIZE S_AWBURST S_AWVALID
 localparam NUM_W_WIDTH = WIDTH_SID + WIDTH_DA + WIDTH_DS + 1 + 1;//S_WID S_WDATA S_WSTRB S_WLAST S_WVALID
-localparam NUM_AR_WIDTH = WIDTH_SID + WIDTH_AD + 8 + 3 + 2 + 1;  //S_ARID S_ARADDR S_ARLEN S_ARLOCK S_ARSIZE S_ARBURST S_ARVALID
+localparam NUM_AR_WIDTH = WIDTH_SID + WIDTH_AD + 4 + 3 + 2 + 1;  //S_ARID S_ARADDR S_ARLEN S_ARSIZE S_ARBURST S_ARVALID
 
 wire [NUM_AW_WIDTH-1:0] bus_aw [0:NUM_MASTER-1];
 wire [NUM_W_WIDTH-1 :0] bus_w  [0:NUM_MASTER-1];

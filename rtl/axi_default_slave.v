@@ -14,7 +14,7 @@ module axi_default_slave
      , input  wire                 ACLK
      , input  wire [WIDTH_SID-1:0] AWID
      , input  wire [WIDTH_AD-1:0]  AWADDR
-     , input  wire [ 7:0]          AWLEN
+     , input  wire [ 3:0]          AWLEN
      , input  wire [ 2:0]          AWSIZE
      , input  wire [ 1:0]          AWBURST
      , input  wire                 AWVALID
@@ -34,7 +34,7 @@ module axi_default_slave
 
      , input  wire [WIDTH_SID-1:0] ARID
      , input  wire [WIDTH_AD-1:0]  ARADDR
-     , input  wire [ 7:0]          ARLEN
+     , input  wire [ 3:0]          ARLEN
      , input  wire [ 2:0]          ARSIZE
      , input  wire [ 1:0]          ARBURST
      , input  wire                 ARVALID
@@ -52,7 +52,7 @@ module axi_default_slave
      //-----------------------------------------------------------
      assign BRESP = 2'b11; // DECERR: decode error
      reg [WIDTH_SID-1:0] awid_reg;
-     reg [8:0] countW, awlen_reg;
+     reg [4:0] countW, awlen_reg;
      //-----------------------------------------------------------
      localparam STW_IDLE   = 'h0,
                 STW_RUN    = 'h1,
@@ -131,7 +131,7 @@ module axi_default_slave
      assign RRESP = 2'b11; // DECERR; decode error
      assign RDATA = ~'h0;
      reg [WIDTH_SID-1:0] arid_reg;
-     reg [8:0] countR, arlen_reg;
+     reg [4:0] countR, arlen_reg;
      //-----------------------------------------------------------
      localparam STR_IDLE   = 'h0,
                 STR_RUN    = 'h1,
@@ -159,7 +159,7 @@ module axi_default_slave
              STR_RUN: begin
                  if ((ARVALID==1'b1)&&(ARREADY==1'b1)) begin
                       ARREADY   <= 1'b0;
-                      arlen_reg <= ARLEN+1;
+                      arlen_reg <= {1'b0, ARLEN} + 5'd1;
                       arid_reg  <= ARID;
                       RID       <= ARID;
                       RVALID    <= 1'b1;

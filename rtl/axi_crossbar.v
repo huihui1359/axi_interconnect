@@ -20,7 +20,7 @@ module axi_crossbar
      , input   wire  [2-1:0]             M0_MID   //2'01
      , input   wire  [WIDTH_ID-1:0]      M0_AWID
      , input   wire  [WIDTH_AD-1:0]      M0_AWADDR
-     , input   wire  [7:0]               M0_AWLEN
+     , input   wire  [3:0]               M0_AWLEN
      , input   wire  [2:0]               M0_AWSIZE
      , input   wire  [1:0]               M0_AWBURST
      , input   wire                      M0_AWVALID
@@ -40,7 +40,7 @@ module axi_crossbar
 
      , input   wire  [WIDTH_ID-1:0]      M0_ARID
      , input   wire  [WIDTH_AD-1:0]      M0_ARADDR
-     , input   wire  [7:0]               M0_ARLEN
+     , input   wire  [3:0]               M0_ARLEN
      , input   wire  [2:0]               M0_ARSIZE
      , input   wire  [1:0]               M0_ARBURST
      , input   wire                      M0_ARVALID
@@ -57,7 +57,7 @@ module axi_crossbar
      , input   wire  [2-1:0]             M1_MID   //2'10
      , input   wire  [WIDTH_ID-1:0]      M1_AWID
      , input   wire  [WIDTH_AD-1:0]      M1_AWADDR
-     , input   wire  [7:0]               M1_AWLEN
+     , input   wire  [3:0]               M1_AWLEN
      , input   wire  [2:0]               M1_AWSIZE
      , input   wire  [1:0]               M1_AWBURST
      , input   wire                      M1_AWVALID
@@ -77,7 +77,7 @@ module axi_crossbar
 
      , input   wire  [WIDTH_ID-1:0]      M1_ARID
      , input   wire  [WIDTH_AD-1:0]      M1_ARADDR
-     , input   wire  [7:0]               M1_ARLEN
+     , input   wire  [3:0]               M1_ARLEN
      , input   wire  [2:0]               M1_ARSIZE
      , input   wire  [1:0]               M1_ARBURST
      , input   wire                      M1_ARVALID
@@ -94,7 +94,7 @@ module axi_crossbar
      , input   wire  [2-1:0]             M2_MID   //2'11
      , input   wire  [WIDTH_ID-1:0]      M2_AWID
      , input   wire  [WIDTH_AD-1:0]      M2_AWADDR
-     , input   wire  [7:0]               M2_AWLEN
+     , input   wire  [3:0]               M2_AWLEN
      , input   wire  [2:0]               M2_AWSIZE
      , input   wire  [1:0]               M2_AWBURST
      , input   wire                      M2_AWVALID
@@ -114,7 +114,7 @@ module axi_crossbar
 
      , input   wire  [WIDTH_ID-1:0]      M2_ARID
      , input   wire  [WIDTH_AD-1:0]      M2_ARADDR
-     , input   wire  [7:0]               M2_ARLEN
+     , input   wire  [3:0]               M2_ARLEN
      , input   wire  [2:0]               M2_ARSIZE
      , input   wire  [1:0]               M2_ARBURST
      , input   wire                      M2_ARVALID
@@ -130,7 +130,7 @@ module axi_crossbar
      //--------------------------------------------------------------
      , output  wire   [WIDTH_SID-1:0]    S0_AWID
      , output  wire   [WIDTH_AD-1:0]     S0_AWADDR
-     , output  wire   [7:0]              S0_AWLEN
+     , output  wire   [3:0]              S0_AWLEN
      , output  wire   [2:0]              S0_AWSIZE
      , output  wire   [1:0]              S0_AWBURST
      , output  wire                      S0_AWVALID
@@ -150,7 +150,7 @@ module axi_crossbar
 
      , output  wire   [WIDTH_SID-1:0]    S0_ARID
      , output  wire   [WIDTH_AD-1:0]     S0_ARADDR
-     , output  wire   [7:0]              S0_ARLEN
+     , output  wire   [3:0]              S0_ARLEN
      , output  wire   [2:0]              S0_ARSIZE
      , output  wire   [1:0]              S0_ARBURST
      , output  wire                      S0_ARVALID
@@ -166,7 +166,7 @@ module axi_crossbar
      //--------------------------------------------------------------
      , output  wire   [WIDTH_SID-1:0]    S1_AWID
      , output  wire   [WIDTH_AD-1:0]     S1_AWADDR
-     , output  wire   [7:0]              S1_AWLEN
+     , output  wire   [3:0]              S1_AWLEN
      , output  wire   [2:0]              S1_AWSIZE
      , output  wire   [1:0]              S1_AWBURST
      , output  wire                      S1_AWVALID
@@ -186,7 +186,7 @@ module axi_crossbar
 
      , output  wire   [WIDTH_SID-1:0]    S1_ARID
      , output  wire   [WIDTH_AD-1:0]     S1_ARADDR
-     , output  wire   [7:0]              S1_ARLEN
+     , output  wire   [3:0]              S1_ARLEN
      , output  wire   [2:0]              S1_ARSIZE
      , output  wire   [1:0]              S1_ARBURST
      , output  wire                      S1_ARVALID
@@ -202,7 +202,7 @@ module axi_crossbar
      //--------------------------------------------------------------
      , output  wire   [WIDTH_SID-1:0]    S2_AWID
      , output  wire   [WIDTH_AD-1:0]     S2_AWADDR
-     , output  wire   [7:0]              S2_AWLEN
+     , output  wire   [3:0]              S2_AWLEN
      , output  wire   [2:0]              S2_AWSIZE
      , output  wire   [1:0]              S2_AWBURST
      , output  wire                      S2_AWVALID
@@ -222,7 +222,7 @@ module axi_crossbar
 
      , output  wire   [WIDTH_SID-1:0]    S2_ARID
      , output  wire   [WIDTH_AD-1:0]     S2_ARADDR
-     , output  wire   [7:0]              S2_ARLEN
+     , output  wire   [3:0]              S2_ARLEN
      , output  wire   [2:0]              S2_ARSIZE
      , output  wire   [1:0]              S2_ARBURST
      , output  wire                      S2_ARVALID
@@ -243,7 +243,7 @@ module axi_crossbar
     // default slave signal
     wire  [WIDTH_SID-1:0]     SD_AWID     ;
     wire  [WIDTH_AD-1:0]      SD_AWADDR   ;
-    wire  [7:0]               SD_AWLEN    ;
+    wire  [3:0]               SD_AWLEN    ;
     wire  [2:0]               SD_AWSIZE   ;
     wire  [1:0]               SD_AWBURST  ;
     wire                      SD_AWVALID  ;
@@ -260,7 +260,7 @@ module axi_crossbar
     wire                      SD_BREADY   ;
     wire  [WIDTH_SID-1:0]     SD_ARID     ;
     wire  [WIDTH_AD-1:0]      SD_ARADDR   ;
-    wire  [7:0]               SD_ARLEN    ;
+    wire  [3:0]               SD_ARLEN    ;
     wire  [2:0]               SD_ARSIZE   ;
     wire  [1:0]               SD_ARBURST  ;
     wire                      SD_ARVALID  ;

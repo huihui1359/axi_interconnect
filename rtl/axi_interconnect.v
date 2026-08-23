@@ -14,7 +14,7 @@ module axi_interconnect
     //From master
      , input   wire  [WIDTH_ID-1:0]      M_AXI_AWID     [0:2]
      , input   wire  [WIDTH_AD-1:0]      M_AXI_AWADDR   [0:2]
-     , input   wire  [7:0]               M_AXI_AWLEN    [0:2]
+     , input   wire  [3:0]               M_AXI_AWLEN    [0:2]
      , input   wire  [2:0]               M_AXI_AWSIZE   [0:2]
      , input   wire  [1:0]               M_AXI_AWBURST  [0:2]
      , input   wire                      M_AXI_AWVALID  [0:2]
@@ -34,7 +34,7 @@ module axi_interconnect
 
      , input   wire  [WIDTH_ID-1:0]      M_AXI_ARID     [0:2]
      , input   wire  [WIDTH_AD-1:0]      M_AXI_ARADDR   [0:2]
-     , input   wire  [7:0]               M_AXI_ARLEN    [0:2]
+     , input   wire  [3:0]               M_AXI_ARLEN    [0:2]
      , input   wire  [2:0]               M_AXI_ARSIZE   [0:2]
      , input   wire  [1:0]               M_AXI_ARBURST  [0:2]
      , input   wire                      M_AXI_ARVALID  [0:2]
@@ -50,7 +50,7 @@ module axi_interconnect
      //To slaver
      , output  wire   [WIDTH_SID-1:0]    S_AXI_AWID     [0:2]
      , output  wire   [WIDTH_AD-1:0]     S_AXI_AWADDR   [0:2]
-     , output  wire   [7:0]              S_AXI_AWLEN    [0:2]
+     , output  wire   [3:0]              S_AXI_AWLEN    [0:2]
      , output  wire   [2:0]              S_AXI_AWSIZE   [0:2]
      , output  wire   [1:0]              S_AXI_AWBURST  [0:2]
      , output  wire                      S_AXI_AWVALID  [0:2]
@@ -70,7 +70,7 @@ module axi_interconnect
 
      , output  wire   [WIDTH_SID-1:0]    S_AXI_ARID     [0:2]
      , output  wire   [WIDTH_AD-1:0]     S_AXI_ARADDR   [0:2]
-     , output  wire   [7:0]              S_AXI_ARLEN    [0:2]
+     , output  wire   [3:0]              S_AXI_ARLEN    [0:2]
      , output  wire   [2:0]              S_AXI_ARSIZE   [0:2]
      , output  wire   [1:0]              S_AXI_ARBURST  [0:2]
      , output  wire                      S_AXI_ARVALID  [0:2]
@@ -86,7 +86,7 @@ module axi_interconnect
 
 wire [WIDTH_ID-1:0]   M_AWID    [0:2] ;
 wire [WIDTH_AD-1:0]   M_AWADDR  [0:2] ;
-wire [7:0]            M_AWLEN   [0:2] ;
+wire [3:0]            M_AWLEN   [0:2] ;
 wire [2:0]            M_AWSIZE  [0:2] ;
 wire [1:0]            M_AWBURST [0:2] ;
 wire                  M_AWVALID [0:2] ;
@@ -104,7 +104,7 @@ wire                  M_BREADY  [0:2] ;
 
 wire [WIDTH_ID-1:0]   M_ARID    [0:2] ;
 wire [WIDTH_AD-1:0]   M_ARADDR  [0:2] ;
-wire [7:0]            M_ARLEN   [0:2] ;
+wire [3:0]            M_ARLEN   [0:2] ;
 wire [2:0]            M_ARSIZE  [0:2] ;
 wire [1:0]            M_ARBURST [0:2] ;
 wire                  M_ARVALID [0:2] ;
@@ -118,7 +118,7 @@ wire                  M_RREADY  [0:2] ;
 
 wire [WIDTH_SID-1:0]  S_AWID    [0:2] ;
 wire [WIDTH_AD-1:0]   S_AWADDR  [0:2] ;
-wire [7:0]            S_AWLEN   [0:2] ;
+wire [3:0]            S_AWLEN   [0:2] ;
 wire [2:0]            S_AWSIZE  [0:2] ;
 wire [1:0]            S_AWBURST [0:2] ;
 wire                  S_AWVALID [0:2] ;
@@ -136,7 +136,7 @@ wire                  S_BREADY  [0:2] ;
 
 wire [WIDTH_SID-1:0]  S_ARID    [0:2] ;
 wire [WIDTH_AD-1:0]   S_ARADDR  [0:2] ;
-wire [7:0]            S_ARLEN   [0:2] ;
+wire [3:0]            S_ARLEN   [0:2] ;
 wire [2:0]            S_ARSIZE  [0:2] ;
 wire [1:0]            S_ARBURST [0:2] ;
 wire                  S_ARVALID [0:2] ;
@@ -218,7 +218,7 @@ genvar i;
 //axi_interconnect slave interface, signals from mst
 generate
     for (i = 0; i < 3; i = i + 1) begin:fifo_ar_mx
-        axi_fifo_sync #(.FDW(4+32+8+3+2), .FAW(2))
+        axi_fifo_sync #(.FDW(4+32+4+3+2), .FAW(2))
         u_fifo_ar_mx(
               .rstn     (AXI_RSTn)
             // , .clr      (1'b0   )
@@ -235,7 +235,7 @@ endgenerate
 //axi_interconnect master interface, signals to slv
 generate
     for (i = 0; i < 3; i = i + 1) begin:fifo_ar_sx
-        axi_fifo_sync #(.FDW(8+32+8+3+2), .FAW(2))
+        axi_fifo_sync #(.FDW(8+32+4+3+2), .FAW(2))
         u_fifo_ar_sx(
               .rstn     (AXI_RSTn)
             // , .clr      (1'b0   )
@@ -290,7 +290,7 @@ endgenerate
 //axi slave interface, signals from master
 generate
     for (i = 0; i < 3; i = i + 1) begin:fifo_aw_mx
-        axi_fifo_sync #(.FDW(4+32+8+3+2), .FAW(2))
+        axi_fifo_sync #(.FDW(4+32+4+3+2), .FAW(2))
         u_fifo_aw_mx(
               .rstn     (AXI_RSTn)
             // , .clr      (1'b0   )
@@ -307,7 +307,7 @@ endgenerate
 //axi master interface, signals to slaver
 generate
     for (i = 0; i < 3; i = i + 1) begin:fifo_aw_sx
-        axi_fifo_sync #(.FDW(8+32+8+3+2), .FAW(2))
+        axi_fifo_sync #(.FDW(8+32+4+3+2), .FAW(2))
         u_fifo_aw_sx(
               .rstn     (AXI_RSTn)
             // , .clr      (1'b0   )
