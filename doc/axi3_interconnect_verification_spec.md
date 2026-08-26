@@ -110,6 +110,7 @@
 | Default Slave | 上述范围以外 | 未映射空间 |
 
 `AWADDR` 和 `ARADDR` 必须分别独立译码。映射到某个 Slave 的合法 burst 必须完整发送至该 Slave，不能把同一个 burst 拆到多个 Slave。未映射地址必须由 Default Slave 处理，不能错误访问任一正常 Slave。
+地址映射关系由DUT所规定。
 
 ## 6. AXI3 通用协议要求
 
