@@ -5,6 +5,7 @@ package axi_env_pkg;
 
   import axi_types_pkg::*;
 
-  `include "axi_seq_item.sv"
+  `include "axi_req_item.sv"
+  `include "axi_rsp_item.sv"
 
 endpackage
