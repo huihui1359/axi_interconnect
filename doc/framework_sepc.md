@@ -1,8 +1,15 @@
 # 三主三从 AXI3 Interconnect UVM 验证 Testplan
 
-editor：孙梦晖  
-date：2026-08-26  
-版本号：v1
+editor：孙梦晖 / Codex整理
+date：2026-09-06
+版本号：v2
+
+## 迭代记录
+
+| 版本 | 日期 | 迭代原因 | 迭代内容 |
+|---|---|---|---|
+| v2 | 2026-09-06 | 新`dv`验证环境已完成AXI interface，需要明确接口抽象与三主三从拓扑的关系 | 增加单端口`axi_if`框架、六个实例与六个agent的对应关系，以及interface、transaction、Driver和tb_top的职责边界 |
+| v1 | 2026-08-26 | 建立三主三从AXI3 Interconnect验证计划 | 定义总体UVM框架、组件职责、测试点、覆盖率和里程碑 |
 
 | 项目 | 内容 |
 |---|---|
@@ -106,6 +113,39 @@ tb_top
 ├── clock/reset
 └── axi_protocol_assertions
 ```
+
+### 4.1 Interface设计框架
+
+新环境使用`dv/tb/axi_if.sv`中的参数化单端口AXI interface。`axi_if`封装一个Master与一个Slave之间的AXI3子集五通道连接，不在interface内部写死三组Master和三组Slave数组。
+
+三主三从由`tb_top`的实例数量体现：
+
+```text
+3个上游axi_if（4-bit ID）
+    mst_if[0] ↔ mst_agent[0] ↔ DUT上游端口0
+    mst_if[1] ↔ mst_agent[1] ↔ DUT上游端口1
+    mst_if[2] ↔ mst_agent[2] ↔ DUT上游端口2
+
+3个下游axi_if（8-bit扩展ID）
+    slv_if[0] ↔ slv_agent[0] ↔ DUT下游端口0
+    slv_if[1] ↔ slv_agent[1] ↔ DUT下游端口1
+    slv_if[2] ↔ slv_agent[2] ↔ DUT下游端口2
+```
+
+采用单端口interface的原因是：每个agent只控制一个物理端口，不需要在Driver中保存`port_index`；同一个接口定义可以分别参数化为上游4-bit ID和下游8-bit ID，也可以复用于其他端口数量的环境。
+
+各层职责为：
+
+| 层次 | 职责 |
+|---|---|
+| `axi_if` | 定义一个AXI端口的五通道信号、clocking视角和访问方向 |
+| `axi_req_item/axi_rsp_item` | 描述请求或响应payload及事务级delay/gap意图 |
+| Master/Slave Driver | 根据事务和READY policy执行VALID/READY握手 |
+| Master/Slave agent | 将一个Driver和Monitor绑定到一个interface实例 |
+| `tb_top` | 实例化三上游、三下游interface并连接DUT数组端口 |
+| `axi_env` | 实例化三组Master agent和三组Slave agent并分发virtual interface |
+
+`axi_if`提供Master Driver、Slave Driver和Monitor三种clocking视角；具体信号方向、modport、顶层映射和接口验收安排见[detail_testplan.md](./detail_testplan.md)的Interface实施章节。
 
 推荐的源代码组织：
 
@@ -646,4 +686,3 @@ Slave侧B/R握手进入DUT
 | M8 灰盒增强 | FIFO/Arbiter/Switch bind assertion | 内部错误定位能力完成 |
 
 黑盒环境在M7完成后应能够独立对DUT进行功能签核；M8不得改变M1～M7的reference结果或scoreboard判定。
-

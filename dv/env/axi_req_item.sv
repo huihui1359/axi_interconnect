@@ -76,7 +76,8 @@ class axi_req_item #(
     }
   }
 
-//TODO:自增的起始地址没有要求，INCR模式下自增，不用减去偏移量？？
+//维护4KB边界约束，burst不能跨4KB边界
+//INCR非对齐传输中，必须从向下对齐地址计算最后一个beat的结束位置。
   // FIXED and legal WRAP bursts cannot cross 4 KB with this AXI subset.
   constraint c_4kb {
     if (burst == AXI_BURST_INCR) {
@@ -159,14 +160,14 @@ class axi_req_item #(
       `uvm_fatal("AXI_REQ_PARAM", "ADDR/ID/LEN widths must be non-zero")
   endfunction
 
-//TODO:这个函数有必要嘛？
   function int unsigned beat_count();
     return int'(len) + 1;
   endfunction
 
-//TODO:这个函数是计算watrb，当首地址没有对齐的时候，掩码肯定要把没对齐的那部分置零，对齐之后呢？这个wstrb函数的逻辑是什么？我不需要额外把首地址传递进来嘛？
+//计算该beat0允许使用的最大wstrb掩码，返回一个DATA_BYTES位的掩码
+//例:addr=0x1002,size=1,这个函数返回的掩码是0b00001100，表示wstrb[3:0]中只有第2和第3位可以使用
   // Required by c_wstrb; not an interface protocol checker.
-  local function automatic bit [DATA_BYTES-1:0] calc_legal_wstrb_mask(
+  local function bit [DATA_BYTES-1:0] calc_legal_wstrb_mask(
     int unsigned beat_index
   );
     bit [DATA_BYTES-1:0] mask;
@@ -217,7 +218,7 @@ class axi_req_item #(
 
     return mask;
   endfunction
-//TODO:这个函数是用来打印信息的吗？直接用uvm_info来打印信息
+//将事务内容转换为字符串，方便打印
   function string convert2string();
     return $sformatf(
       "dir=%s id=0x%0h addr=0x%0h len=%0d beats=%0d size=%0d burst=%s",

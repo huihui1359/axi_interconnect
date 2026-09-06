@@ -34,13 +34,11 @@ class axi_rsp_item #(
     `uvm_field_array_int(rbeat_gap, UVM_DEFAULT)
   `uvm_object_utils_end
 
-//TODO:在AXI_READ时，主机接收RRESP，不会接收BRESP，这时BRESP的valid也是拉低状态的吧？那还用在约束限制bresp=AXI_RESP_OKAY吗？
   constraint c_payload_size {
     if (dir == AXI_READ) {
       rdata.size() == int'(len) + 1;
       rresp.size() == int'(len) + 1;
       rbeat_gap.size() == int'(len);
-      bresp == AXI_RESP_OKAY;
     }
     else {
       rdata.size() == 0;
@@ -49,7 +47,14 @@ class axi_rsp_item #(
     }
   }
 
-//TODO:为什么删去了EXOKAY？？
+  // Canonicalize the inactive write-response field for read transactions.
+  // This value does not cause a B response; the driver controls BVALID.
+  constraint c_inactive_fields {
+    if (dir == AXI_READ)
+      bresp == AXI_RESP_OKAY;
+  }
+
+//为什么删去了EXOKAY？？赛题给的信号端口里面没有LOCK信号
   // EXOKAY is excluded because the current request model has no exclusive access.
   constraint c_legal_response {
     if (dir == AXI_WRITE)
