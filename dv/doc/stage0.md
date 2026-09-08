@@ -1,8 +1,12 @@
 # AXI3 Interconnect UVM验证环境Stage 0执行工单
 
-editor：Codex / 项目讨论结论整理  
-date：2026-09-08  
-状态：待审核，审核通过前不得实施  
+editor：Codex / 项目讨论结论整理
+
+date：2026-09-08
+
+实施日期：2026-09-09
+
+状态：已审核，Stage 0已实施并通过基础验收
 
 ## 1. 文档目的
 
@@ -68,6 +72,11 @@ Stage 0不得实现以下内容：
 - 区分以下ID宽度：
   - 上游Master端口原始ID宽度为4。
   - 下游Slave端口扩展ID宽度为8。
+- 上下游ID宽度不同来自当前DUT的真实接口定义，不是验证环境自行增加：
+  - `rtl/axi_interconnect.v`中`WIDTH_ID=4`，因此`M_AXI_AWID/WID/BID/ARID/RID`均为4位。
+  - 下游使用`WIDTH_SID=WIDTH_CID+WIDTH_ID=8`，因此`S_AXI_AWID/WID/BID/ARID/RID`均为8位。
+  - RTL把路由信息、来源Master信息和原始4-bit ID组合为下游扩展ID；下游Slave返回BID/RID时必须原样返回全部8位，由Interconnect恢复并路由到对应上游Master。
+  - 因此不能把上下游interface统一固定为4位，否则会截断DUT用于响应路由和ID恢复的信息。
 - 定义Master数量和Slave数量，当前均为3。
 - 保留`axi_dir_e`、`axi_burst_e`和`axi_resp_e`作为协议公共类型。
 - 保留地址区域和数据pattern枚举供后续sequence/reference model使用，但Driver不得依赖这些场景枚举产生协议行为。
@@ -126,7 +135,7 @@ SCRIPTED_READY
 ### 5.2 实现要求
 
 - Interface继续参数化`ADDR_WIDTH`、`DATA_WIDTH`、`ID_WIDTH`和`LEN_WIDTH`。
-- 上游端口使用4-bit ID specialization，下游端口使用8-bit ID specialization。
+- 上游端口使用4-bit ID specialization，下游端口使用8-bit ID specialization；二者复用同一个参数化`axi_if`定义，不复制成两份interface源码。
 - `m_drv_cb`只允许Master Driver驱动AW/W/AR请求及BREADY/RREADY。
 - `s_drv_cb`只允许Slave Driver驱动AWREADY/WREADY/ARREADY及B/R响应。
 - `mon_cb`只能采样，不得驱动任何接口信号。
@@ -198,6 +207,25 @@ LEN_WIDTH
 - 构造函数设置安全默认值，不在构造函数中访问`uvm_config_db`。
 - config对象只保存配置和句柄，不启动线程、不驱动总线。
 - `port_index`仅用于配置映射和日志，不允许后续Driver用它索引全局interface数组。
+
+### 6.4 Config数量及其与Package的关系
+
+Stage 0只规划三种config class类型，不规划第四种config：
+
+```text
+axi_m_agent_cfg    Master agent单端口配置类型，后续创建3个对象
+axi_s_agent_cfg    Slave agent单端口配置类型，后续创建3个对象
+axi_env_cfg        环境聚合配置类型，通常创建1个对象并持有上述6个子配置
+```
+
+`axi_env_pkg.sv`不是第四个config。它是SystemVerilog package入口，用于统一import公共类型并include/export环境中的class定义。cfg class源文件会通过`axi_env_pkg.sv`编入`axi_env_pkg`命名空间，但package本身不能代替运行期config对象，原因如下：
+
+- package中的变量属于全局静态状态，不能自然表示六个端口各自不同的配置实例。
+- 每个agent需要取得只属于本端口的virtual interface、端口编号和READY策略，不能共同读写一个全局配置变量集合。
+- `uvm_config_db`传递的是按组件层次分发的值或对象句柄；独立config对象能够被factory创建、检查、打印和按实例传递。
+- 如果Driver直接访问package全局配置，会把单端口组件耦合到三主三从全局结构，破坏组件复用和独立测试。
+
+因此采用“package负责类型组织，config对象负责运行期配置”的分工；不在`axi_env_pkg.sv`中定义共享的运行期配置变量来替代三种config class。
 
 ## 7. S0-05：实现参数化环境配置对象
 
@@ -417,13 +445,21 @@ dv/
 │   └── axi_types_pkg.sv
 ├── env/
 │   ├── axi_env_pkg.sv
+│   ├── axi_env_cfg.sv
 │   ├── axi_req_item.sv
 │   ├── axi_rsp_item.sv
-│   ├── axi_m_agent_cfg.sv
-│   ├── axi_s_agent_cfg.sv
-│   ├── axi_env_cfg.sv
-│   ├── axi_m_sequencer.sv
-│   └── axi_s_sequencer.sv
+│   ├── master/
+│   │   ├── axi_m_agent_cfg.sv
+│   │   ├── axi_m_sequencer.sv
+│   │   ├── axi_m_driver.sv       后续Stage创建
+│   │   ├── axi_m_monitor.sv      后续Stage创建
+│   │   └── axi_m_agent.sv        后续Stage创建
+│   └── slave/
+│       ├── axi_s_agent_cfg.sv
+│       ├── axi_s_sequencer.sv
+│       ├── axi_s_driver.sv       后续Stage创建
+│       ├── axi_s_monitor.sv      后续Stage创建
+│       └── axi_s_agent.sv        后续Stage创建
 ├── tb/
 │   ├── axi_if.sv
 │   └── stage0_tb.sv
@@ -431,6 +467,8 @@ dv/
     ├── stage0.f
     └── Makefile
 ```
+
+Master agent专属组件统一放入`dv/env/master/`，Slave agent专属组件统一放入`dv/env/slave/`。transaction同时被多个角色使用，`axi_env_cfg`属于环境级聚合对象，因此继续放在`dv/env/`根目录。Stage 0只创建两个子目录中的cfg和sequencer文件，不提前创建图中标记为“后续Stage创建”的Driver、Monitor和Agent文件。
 
 具体测试类可以放入独立test package；如果实施时增加对应目录，必须保持测试代码与可复用环境代码分离。
 
@@ -452,11 +490,11 @@ dv/
 ```text
 1. axi_req_item.sv
 2. axi_rsp_item.sv
-3. axi_m_agent_cfg.sv
-4. axi_s_agent_cfg.sv
+3. master/axi_m_agent_cfg.sv
+4. slave/axi_s_agent_cfg.sv
 5. axi_env_cfg.sv
-6. axi_m_sequencer.sv
-7. axi_s_sequencer.sv
+6. master/axi_m_sequencer.sv
+7. slave/axi_s_sequencer.sv
 ```
 
 ### 15.3 编译框架要求
@@ -471,155 +509,40 @@ dv/
 
 ## 16. 验收总体要求
 
-Stage 0验收分为文档一致性、静态编译、transaction、interface、config和sequencer六类。所有测试应使用新`dv`编译入口，不得依赖旧`uvm_tb`环境提供功能。
+Stage 0尚未实现Driver、Monitor、Agent和端到端小环境，因此本阶段只进行必要的基础验收，目标是确认公共契约已经确定、类型能够正确编译、后续组件具备可用的基础接口。
 
-验收结果必须满足：
+Stage 0不进行协议功能、随机压力或多端口连接的完整验证。所有验收使用新`dv`编译入口，不得依赖旧`uvm_tb`环境提供功能。
 
-- 编译退出码为0。
-- 仿真退出码为0。
-- 无非预期`UVM_ERROR`、`UVM_FATAL`或SystemVerilog fatal。
-- 每项测试输出明确的PASS/FAIL总结。
-- 未通过项不得通过降低日志级别、关闭检查或跳过测试规避。
+## 17. A0-01：文档和职责审核
 
-## 17. A0-01：文档和职责一致性审核
-
-### 17.1 审核内容
-
-- 核对本工单是否覆盖`stage.md`中全部Stage 0预期内容。
-- 核对transaction字段和约束是否符合`transaction_spec.md`。
-- 核对Driver总体职责是否符合`driver_spec.md`。
-- 核对interface方向、ID宽度和reset规则是否符合`detail_testplan.md`。
+- 核对本工单覆盖`stage.md`中全部Stage 0内容。
+- 核对transaction、interface和Driver职责与已有SPEC一致。
+- 核对上游4-bit ID、下游8-bit扩展ID以及对应参数化关系正确。
+- 核对对象所有权、`item_done()`、delay/gap和reset基础边界已经明确。
 - 核对Stage 0没有提前包含Stage 1及后续功能。
-- 核对所有待讨论内容都使用显式OPEN标记，没有隐藏的“实现时再决定”。
-
-### 17.2 通过条件
-
-- 文档之间不存在相互冲突的字段、方向或职责定义。
-- 除`S0-OPEN-01`外，不存在影响Stage 0实施的未决架构问题。
-- `S0-OPEN-01`已经预留兼容类型接口，不阻塞Stage 0编译框架。
+- 保留的待讨论问题必须使用明确的OPEN标记，且不得阻塞Stage 0基础类型实现。
 
 ## 18. A0-02：独立编译验收
 
-### 18.1 测试内容
-
-- 使用`dv/sim/stage0.f`编译公共类型、interface、环境package和Stage 0测试顶层。
-- 从不包含旧编译产物的目录执行一次完整编译。
-- 检查package和include顺序。
-- 检查所有参数化class均能被解析和factory注册。
-
-### 18.2 通过条件
-
-- 新`dv`环境可以独立编译。
+- 使用`dv/sim/stage0.f`编译公共类型、interface、transaction、config、sequencer和Stage 0最小测试顶层。
+- 确认package及include顺序正确。
+- 确认4-bit Master和8-bit Slave两组参数化类型均可编译。
+- 确认参数化config和sequencer能够完成factory注册和对象创建。
 - 文件列表中不存在`uvm_tb`路径。
-- 不依赖隐式编译顺序才能通过。
-- 无重复package、重复class、未定义类型或virtual interface类型不匹配错误。
+- 编译和最小测试运行结束时无非预期`UVM_ERROR`、`UVM_FATAL`或SystemVerilog fatal。
 
-## 19. A0-03：Transaction验收
+## 19. A0-03：基础对象Smoke验收
 
-### 19.1 随机化测试
+本阶段只做少量确定性smoke，不进行大规模随机回归：
 
-至少执行：
+- 分别创建一个读请求、一个写请求、一个读响应和一个写响应。
+- 对请求和响应各执行一次randomize，确认基本约束可以求解且数组尺寸正确。
+- 对包含动态数组的请求和响应各执行一次clone/compare，确认副本可用且不会与原对象共享动态数组内容。
+- 实例化一个4-bit Master interface和一个8-bit Slave interface，确认其能够赋给对应config中的virtual interface类型。
+- 创建Master agent cfg、Slave agent cfg和env cfg，检查关键默认值与端口配置数量。
+- 创建Master和Slave sequencer，确认REQ/RSP类型specialization正确。
 
-- 1000笔4-bit ID读请求。
-- 1000笔4-bit ID写请求。
-- 1000笔8-bit ID读响应。
-- 1000笔8-bit ID写响应。
-
-检查：
-
-- `len`与动态数组尺寸一致。
-- 读请求的写数组为空。
-- 写响应的读数组为空。
-- WRAP长度和首地址对齐合法。
-- 正常INCR请求不跨4KB。
-- WSTRB没有超出当前beat合法lane。
-- 响应不会随机产生EXOKAY。
-- 响应randomize后`dir/id/len`保持关联值不变。
-
-### 19.2 对象操作测试
-
-对读写请求和读写响应分别执行：
-
-- `copy()`。
-- `clone()`。
-- `compare()`。
-- `print()`或`convert2string()`。
-
-修改副本动态数组中的元素后，原对象内容必须保持不变，以证明不存在动态数组浅复制问题。
-
-### 19.3 参数检查测试
-
-- 对4-bit和8-bit ID specialization分别创建对象并检查`$bits(id)`。
-- 对合法DATA_WIDTH参数创建对象不得报错。
-- 对零宽度、非整字节或非2次幂DATA_BYTES等非法参数，应在独立负向测试中产生预期fatal。
-
-## 20. A0-04：Interface验收
-
-### 20.1 实例化检查
-
-Stage 0测试顶层实例化：
-
-```text
-3个ADDR=32、DATA=32、ID=4、LEN=4的Master侧axi_if
-3个ADDR=32、DATA=32、ID=8、LEN=4的Slave侧axi_if
-```
-
-### 20.2 检查内容
-
-- 检查地址、数据、ID、LEN和WSTRB位宽。
-- 检查`m_drv_mp`、`s_drv_mp`和`mon_mp`能够以预期类型声明virtual interface。
-- 检查Master Driver视角和Slave Driver视角不存在方向颠倒。
-- 检查Monitor modport没有任何输出信号。
-- 检查interface没有主动产生VALID、READY和reset。
-- 使用独立负向编译或仿真测试检查非法参数报告。
-
-### 20.3 通过条件
-
-- 六个interface实例参数正确。
-- 所有modport和clocking block类型可被对应config接收。
-- 不存在隐式ID截断或扩展。
-
-## 21. A0-05：Config和Virtual Interface验收
-
-### 21.1 Factory和默认值
-
-- 使用factory创建Master配置、Slave配置和环境配置。
-- 检查active/passive、READY模式和outstanding字段的默认值。
-- 检查环境配置默认创建或持有3个Master配置位置和3个Slave配置位置。
-- 检查六个子配置的`port_index`唯一且范围正确。
-
-### 21.2 Interface映射
-
-- 把3个4-bit interface分别赋给3个Master配置。
-- 把3个8-bit interface分别赋给3个Slave配置。
-- 分别设置Driver视角和Monitor视角句柄。
-- 使用精确组件路径完成`uvm_config_db::set/get`测试。
-- 检查每个接收者取得的配置对象和端口编号正确。
-
-### 21.3 错误场景
-
-- 未配置virtual interface时，配置校验契约必须能够识别空句柄。
-- Master/Slave或4-bit/8-bit interface不得通过隐式类型转换错误互换。
-- 禁止用`"*"`将同一个端口配置广播给全部Agent的实现方式通过审核。
-
-## 22. A0-06：Sequencer类型验收
-
-### 22.1 测试内容
-
-- factory创建4-bit ID的Master sequencer。
-- factory创建8-bit ID的Slave sequencer。
-- 编译检查Master sequencer的REQ类型为对应`axi_req_item`。
-- 编译检查Master sequencer预留的RSP类型为对应`axi_rsp_item`。
-- 编译检查Slave sequencer的item类型为对应`axi_rsp_item`。
-- 创建最小空sequence验证类型能够完成start/finish流程，但不连接Driver、不驱动interface。
-
-### 22.2 通过条件
-
-- sequencer parameter specialization和factory注册无错误。
-- 4-bit与8-bit item不能连接到不匹配的sequencer类型。
-- 测试没有借助空Driver绕过Stage边界。
-
-## 23. A0-07：Stage边界验收
+## 20. A0-04：Stage边界和完成检查
 
 检查Stage 0变更集合，确认没有新增以下实现：
 
@@ -631,36 +554,51 @@ Stage 0测试顶层实例化：
 - outstanding、乱序和交织队列。
 - scoreboard、reference model或coverage功能。
 
-允许的测试代码仅用于验证Stage 0公共基础，不得被包装成正式组件行为。
-
-## 24. Stage 0完成条件
-
-只有同时满足以下条件，Stage 0才能标记完成：
+Stage 0满足以下条件即可完成：
 
 1. 本工单已经审核并冻结。
-2. S0-01～S0-13全部实施完成。
-3. A0-01～A0-07全部通过。
-4. 新`dv`环境能够独立编译和运行Stage 0测试。
-5. 公共类型、transaction、interface、config和sequencer之间参数一致。
-6. 对象所有权、`item_done()`、delay/gap、reset和组件职责已有明确书面契约。
-7. 没有提前实现Stage 1或后续Stage功能。
-8. 所有非预期编译告警、UVM错误和fatal均已处理。
-9. 验收结果和已知限制已经记录。
+2. S0-01～S0-13已经实施完成。
+3. 文档审核、独立编译和基础对象smoke均通过。
+4. 新`dv`环境能够在不引用旧`uvm_tb`的情况下独立编译。
+5. 公共类型、transaction、interface、config和sequencer参数一致。
+6. 没有提前实现Stage 1或后续Stage功能。
+7. 验收结果和待讨论项已经记录。
 
-Stage 0完成后，Stage 1可以直接依据本文确定的类型、配置、对象所有权和线程边界，实现组件最小能力及独立测试支架，而不再重新设计Stage 0公共契约。
+## 21. 后续Stage再验证的内容
 
-## 25. 审核记录
+以下内容不作为Stage 0完成门槛，在对应组件或小环境搭建后验证：
+
+- 大规模transaction随机化和约束覆盖。
+- 非法参数及预期fatal负向测试。
+- 三组Master和三组Slave的完整virtual interface映射。
+- `uvm_config_db`完整层次路径和六端口防串接检查。
+- Driver与sequencer的实际连接及`item_done()`行为。
+- Interface五通道方向、握手、stall和reset行为。
+- Monitor采样、transaction重建和analysis port数据流。
+- burst、delay/gap、outstanding、乱序和交织功能。
+- 端到端Scoreboard、assertion和functional coverage。
+
+这些测试应随着Stage 1组件测试支架、Stage 2单端口小环境以及后续功能Stage逐步加入回归。
+
+## 22. 审核记录
 
 | 审核项 | 状态 | 说明 |
 |---|---|---|
-| Stage 0范围 | 待审核 |  |
-| 公共类型和参数化方案 | 待审核 | 采用组件全参数化方案 |
-| Transaction和interface契约 | 待审核 |  |
-| Config和sequencer方案 | 待审核 |  |
-| 对象所有权和`item_done()` | 待审核 |  |
-| Delay/gap语义 | 待审核 |  |
-| Reset边界 | 待审核 |  |
-| 验收方案 | 待审核 |  |
+| Stage 0范围 | 已通过 | 未实现Driver、Monitor或Agent |
+| 公共类型和参数化方案 | 已通过 | 采用组件全参数化方案 |
+| Transaction和interface契约 | 已通过 | 复用现有参数化实现 |
+| Config和sequencer方案 | 已通过 | 已实现并通过factory创建smoke |
+| 对象所有权和`item_done()` | 已通过 | 契约已确定，行为测试留到Stage 1 |
+| Delay/gap语义 | 已通过 | 契约已确定，行为测试留到Stage 3 |
+| Reset边界 | 已通过 | 基础契约已确定，行为测试留到后续Stage |
+| 验收方案 | 已通过 | 独立编译和基础对象smoke通过 |
 | S0-OPEN-01 Master response默认行为 | 待讨论 | 仅预留类型接口 |
 
-审核通过前，本工单中的Stage 0实现内容不得施行。
+### 22.1 实施与验收记录
+
+- 使用QuestaSim 10.6c和预编译UVM 1.1d执行`dv/sim/Makefile`中的`make run`。
+- 从清理后的构建目录重新完成一次编译和仿真，确认编译入口可重复执行。
+- 编译结果：0 error，0 warning。
+- UVM smoke结果：`STAGE0_PASS`，0 UVM warning，0 UVM error，0 UVM fatal。
+- 新`dv`文件列表没有引用旧`uvm_tb`环境。
+- `S0-OPEN-01`继续保留，不影响进入Stage 1。

@@ -1,9 +1,16 @@
 package axi_types_pkg;
 
-  localparam int unsigned AXI_ADDR_WIDTH = 32;
-  localparam int unsigned AXI_DATA_WIDTH = 32;
-  localparam int unsigned AXI_ID_WIDTH   = 4;
-  localparam int unsigned AXI_LEN_WIDTH  = 4;
+  localparam int unsigned AXI_ADDR_WIDTH  = 32;
+  localparam int unsigned AXI_DATA_WIDTH  = 32;
+  localparam int unsigned AXI_M_ID_WIDTH  = 4;
+  localparam int unsigned AXI_S_ID_WIDTH  = 8;
+  localparam int unsigned AXI_LEN_WIDTH   = 4;
+  localparam int unsigned AXI_NUM_MASTERS = 3;
+  localparam int unsigned AXI_NUM_SLAVES  = 3;
+
+  // Backward-compatible default for generic transaction/interface types.
+  // Project-level Master/Slave components must use the explicit constants.
+  localparam int unsigned AXI_ID_WIDTH = AXI_M_ID_WIDTH;
 
   typedef enum bit {
     AXI_READ  = 1'b0,
@@ -38,5 +45,10 @@ package axi_types_pkg;
     AXI_DATA_ADDRESS
   } axi_data_pattern_e;
 
-endpackage
+  typedef enum bit [1:0] {
+    ALWAYS_READY,
+    RANDOM_READY,
+    SCRIPTED_READY
+  } axi_ready_mode_e;
 
+endpackage
