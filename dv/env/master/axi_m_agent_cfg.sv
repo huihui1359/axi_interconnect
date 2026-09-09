@@ -1,5 +1,6 @@
 `ifndef AXI_M_AGENT_CFG_SV
 `define AXI_M_AGENT_CFG_SV
+//m_agent_cfg和s_agent_cfg中有很多重复参数变量定义，导致代码有些冗余，能不能合并简化一下？成为一个整体axi_cfg？
 
 class axi_m_agent_cfg #(
   int unsigned ADDR_WIDTH = AXI_ADDR_WIDTH,
