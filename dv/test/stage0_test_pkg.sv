@@ -35,7 +35,7 @@ package stage0_test_pkg;
     ) m_seqr_t;
 
     typedef axi_s_sequencer #(
-      AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
+      AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
     ) s_seqr_t;
 
     typedef virtual axi_if #(

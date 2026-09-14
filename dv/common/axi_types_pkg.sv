@@ -51,4 +51,17 @@ package axi_types_pkg;
     SCRIPTED_READY
   } axi_ready_mode_e;
 
+  typedef enum bit [2:0] {
+    AXI_CHANNEL_AW,
+    AXI_CHANNEL_W,
+    AXI_CHANNEL_B,
+    AXI_CHANNEL_AR,
+    AXI_CHANNEL_R
+  } axi_channel_e;
+
+  typedef enum bit {
+    AXI_UPSTREAM,
+    AXI_DOWNSTREAM
+  } axi_side_e;
+
 endpackage

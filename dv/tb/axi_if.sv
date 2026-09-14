@@ -1,8 +1,8 @@
 `ifndef AXI_IF_SV
 `define AXI_IF_SV
 
-//一个完整的、单端口AXI接口，包含所有的信号和时序约束
-//一个axi_if实例只代表一个物理AXI连接
+// 一个axi_if实例表示一组单端口AXI物理连接。
+// Driver和Monitor通过modport直接访问接口信号，并在各自组件中按ACLK同步。
 interface axi_if #(
   int unsigned ADDR_WIDTH = axi_types_pkg::AXI_ADDR_WIDTH,
   int unsigned DATA_WIDTH = axi_types_pkg::AXI_DATA_WIDTH,
@@ -55,66 +55,45 @@ interface axi_if #(
   logic                   rvalid;
   logic                   rready;
 
-  // One clocking event observes the just-completed transfer and drives the
-  // next-cycle outputs without testbench/DUT scheduling races.
-  clocking m_drv_cb @(posedge ACLK);
-    default input #1step output #0;//提前1step采样input信号，立即驱动output
+  // Master Driver drives request channels and response READY signals.
+  modport m_drv_mp (
+    input  ACLK, ARESETn,
+    output awid, awaddr, awlen, awsize, awburst, awvalid,
+    input  awready,
+    output wid, wdata, wstrb, wlast, wvalid,
+    input  wready,
+    input  bid, bresp, bvalid,
+    output bready,
+    output arid, araddr, arlen, arsize, arburst, arvalid,
+    input  arready,
+    input  rid, rdata, rresp, rlast, rvalid,
+    output rready
+  );
 
-    input  ARESETn;
+  // Slave Driver receives requests and drives READY and response channels.
+  modport s_drv_mp (
+    input  ACLK, ARESETn,
+    input  awid, awaddr, awlen, awsize, awburst, awvalid,
+    output awready,
+    input  wid, wdata, wstrb, wlast, wvalid,
+    output wready,
+    output bid, bresp, bvalid,
+    input  bready,
+    input  arid, araddr, arlen, arsize, arburst, arvalid,
+    output arready,
+    output rid, rdata, rresp, rlast, rvalid,
+    input  rready
+  );
 
-    output awid, awaddr, awlen, awsize, awburst, awvalid;
-    input  awready;
-
-    output wid, wdata, wstrb, wlast, wvalid;
-    input  wready;
-
-    input  bid, bresp, bvalid;
-    output bready;
-
-    output arid, araddr, arlen, arsize, arburst, arvalid;
-    input  arready;
-
-    input  rid, rdata, rresp, rlast, rvalid;
-    output rready;
-  endclocking
-
-  clocking s_drv_cb @(posedge ACLK);
-    default input #1step output #0;
-
-    input  ARESETn;
-
-    input  awid, awaddr, awlen, awsize, awburst, awvalid;
-    output awready;
-
-    input  wid, wdata, wstrb, wlast, wvalid;
-    output wready;
-
-    output bid, bresp, bvalid;
-    input  bready;
-
-    input  arid, araddr, arlen, arsize, arburst, arvalid;
-    output arready;
-
-    output rid, rdata, rresp, rlast, rvalid;
-    input  rready;
-  endclocking
-
-  // Monitor sees every signal but never drives the interface.
-  clocking mon_cb @(posedge ACLK);
-    default input #1step;
-
-    input ARESETn;
-
-    input awid, awaddr, awlen, awsize, awburst, awvalid, awready;
-    input wid, wdata, wstrb, wlast, wvalid, wready;
-    input bid, bresp, bvalid, bready;
-    input arid, araddr, arlen, arsize, arburst, arvalid, arready;
-    input rid, rdata, rresp, rlast, rvalid, rready;
-  endclocking
-
-  modport m_drv_mp (clocking m_drv_cb);
-  modport s_drv_mp (clocking s_drv_cb);
-  modport mon_mp   (clocking mon_cb);
+  // Monitor has read-only access to the complete interface.
+  modport mon_mp (
+    input ACLK, ARESETn,
+    input awid, awaddr, awlen, awsize, awburst, awvalid, awready,
+    input wid, wdata, wstrb, wlast, wvalid, wready,
+    input bid, bresp, bvalid, bready,
+    input arid, araddr, arlen, arsize, arburst, arvalid, arready,
+    input rid, rdata, rresp, rlast, rvalid, rready
+  );
 
   // DUT behaves as an AXI Slave on each upstream Master-facing port.
   modport dut_slave_mp (

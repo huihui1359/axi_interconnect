@@ -5,12 +5,23 @@ package axi_env_pkg;
 
   import axi_types_pkg::*;
 
+  `uvm_analysis_imp_decl(_expected)
+  `uvm_analysis_imp_decl(_actual)
+
   `include "axi_req_item.sv"
   `include "axi_rsp_item.sv"
+  `include "axi_channel_event.sv"
   `include "master/axi_m_agent_cfg.sv"
   `include "slave/axi_s_agent_cfg.sv"
   `include "axi_env_cfg.sv"
   `include "master/axi_m_sequencer.sv"
   `include "slave/axi_s_sequencer.sv"
+  `include "master/axi_m_driver.sv"
+  `include "slave/axi_s_driver.sv"
+  `include "master/axi_m_monitor.sv"
+  `include "slave/axi_s_monitor.sv"
+  `include "master/axi_m_agent.sv"
+  `include "slave/axi_s_agent.sv"
+  `include "axi_basic_event_comparator.sv"
 
 endpackage

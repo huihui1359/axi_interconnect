@@ -20,9 +20,7 @@
 ```text
 公共基础和组件契约
         ↓
-组件最小能力及独立测试支架
-        ↓
-单端口、单拍、无背压纵向闭环
+组件最小能力、独立测试支架及单端口最小纵向闭环
         ↓
 burst、delay和通道stall
         ↓
@@ -55,9 +53,13 @@ AXI3写数据/读数据交织
 - 明确reset边界和各组件在reset期间的基本行为。
 - 建立package、文件include顺序和最小编译框架。
 
-## 4. Stage 1：组件最小能力和独立测试支架
+## 4. Stage 1：基础组件和单端口最小纵向闭环
 
-本阶段实现Driver、Monitor、sequence和Scoreboard的最小功能，并为它们建立相互独立的组件级测试方式。
+本阶段完成基础验证环境搭建：先实现Driver、Monitor、sequence和基础比较组件的最小能力并分别进行独立验证，再将已通过组件级验收的组件组装为单端口、单笔、单拍、无主动背压的请求—响应闭环。
+
+Stage 1划分为两个连续的内部验收门槛。Stage 1A通过后才能进入Stage 1B；只有两个门槛全部通过，Stage 1才算完成。
+
+### 4.1 Stage 1A：组件最小能力和独立测试支架
 
 预期完成：
 
@@ -68,35 +70,39 @@ AXI3写数据/读数据交织
 - Master Driver内部建立可继续扩展的AW、W、AR发送路径和B、R接收路径。
 - Slave Driver内部建立可继续扩展的AW、W、AR接收控制路径和B、R发送路径。
 - 实现Master Monitor和Slave Monitor的单次通道握手采样能力。
-- 实现最简单的Master请求sequence和reactive Slave response sequence。
+- 实现最简单的Master请求sequence和Slave response sequence。
 - 实现Scoreboard或基础比较组件的最小对象匹配能力。
-- 建立Driver组件测试支架，使用简单pin-level对端检查Driver的接口输出。
-- 建立Monitor组件测试支架，使用确定性接口波形检查Monitor发布的观察对象。
-- 建立Scoreboard对象级测试支架，允许直接注入预期对象和实际对象。
+- 建立Driver组件测试支架，使用简单pin-level对端检查Driver的接口输出，不以正式Monitor作为唯一判断依据。
+- 建立Monitor组件测试支架，使用确定性pin-level接口波形检查Monitor发布的观察对象，不以正式Driver作为唯一激励源。
+- 建立Scoreboard或基础比较组件的对象级测试支架，允许直接注入预期对象和实际对象。
+- 验证transaction快照、对象所有权和`item_done()`只调用一次且不等待总线响应的契约。
 - 加入基础协议检查能力，为后续组件调试提供独立观察依据。
 
-本阶段只要求最小事务能力，不加入burst、多outstanding、乱序和交织。
-
-## 5. Stage 2：单端口最小纵向闭环
-
-本阶段把已经具备最小能力的组件连接起来，建立第一个可以完整运行的请求—响应闭环。
+### 4.2 Stage 1B：单端口最小纵向闭环
 
 预期完成：
 
 - 组装一个Master agent和一个Slave agent。
 - 完成sequencer、Driver和Monitor之间的连接。
-- 完成Monitor analysis port与后续响应生成、比较路径的连接。
-- 在DUT上只启用一个Master端口和一个目标Slave端口，其余端口保持空闲。
+- 完成Monitor analysis port与响应生成、比较路径的连接。
+- 实现最小reactive Slave response sequence。
+- 在DUT上只启用一个Master端口和一个目标Slave端口，其余端口保持确定性空闲。
 - 跑通单拍写请求、写响应、单拍读请求和读响应。
 - 跑通Slave Monitor到reactive Slave sequence再到Slave Driver的响应因果链路。
-- 建立最小的端到端Scoreboard数据流。
-- 完成单端口环境中的config_db配置、virtual interface分发和组件层次组织。
-- 完成基础phase、objection、reset启动和仿真退出流程。
+- 建立最小的端到端Scoreboard或基础比较数据流。
+- 完成单端口环境中的`uvm_config_db`配置、virtual interface分发和组件层次组织。
+- 完成基础phase、objection、reset启动、统一timeout和仿真退出流程。
 - 验证上游原始ID、下游扩展ID及其返回路径能够在最小环境中正确流转。
 
-本阶段保持单拍、单笔和无主动背压，重点是确认整体数据流和框架连接正确。
+### 4.3 Stage 1能力边界和验收原则
 
-## 6. Stage 3：Burst、Delay和通道Backpressure
+- 本阶段保持单笔、单拍和无主动背压，不加入burst、delay/gap运行机制、多outstanding、乱序和交织。
+- READY运行策略只使用`ALWAYS_READY`；`RANDOM_READY`和`SCRIPTED_READY`留到后续Stage。
+- Stage 1A的独立组件测试必须保留为Stage 1B及后续Stage的回归内容，不能用端到端闭环测试替代组件级验收。
+- Stage 1B只建立一个Master端口到一个Slave端口的最小闭环，不扩展为三主三从完整环境。
+- 最小比较路径只需支持本阶段的确定性单笔单拍场景，不提前实现完整路由、仲裁、outstanding和交织检查。
+
+## 5. Stage 2：Burst、Delay和通道Backpressure
 
 本阶段在最小纵向闭环基础上增加完整burst传输、事务时序字段以及确定性通道背压。
 
@@ -116,7 +122,7 @@ AXI3写数据/读数据交织
 
 本阶段仍以每个方向最多一笔outstanding为主，避免burst问题与多事务调度问题同时引入。
 
-## 7. Stage 4：多Outstanding和响应乱序
+## 6. Stage 3：多Outstanding和响应乱序
 
 本阶段增加每个端口的多事务并发能力，以及基于方向和ID的请求/响应关联。
 
@@ -137,7 +143,7 @@ AXI3写数据/读数据交织
 
 本阶段先实现事务级outstanding和乱序；同一burst的beat仍可保持连续发送，暂不加入beat级交织。
 
-## 8. Stage 5：AXI3写数据和读数据交织
+## 7. Stage 4：AXI3写数据和读数据交织
 
 本阶段实现AXI3中风险较高的beat级交织和调度机制。
 
@@ -154,7 +160,7 @@ AXI3写数据/读数据交织
 - Tracker和Scoreboard能够正确处理合法交织，而不使用单一全局FIFO强制所有ID同序。
 - 扩展定向sequence以控制交织深度、ID组合和beat切换方式。
 
-## 9. Stage 6：完整READY策略、容量管理和复杂Reset
+## 8. Stage 5：完整READY策略、容量管理和复杂Reset
 
 本阶段完善背压策略、验证环境内部容量保护、复杂reset和异常处理。
 
@@ -173,7 +179,7 @@ AXI3写数据/读数据交织
 - 保证reset不会造成sequencer握手永久挂起，也不会自动重放已经部分握手的事务。
 - 增加超时、错误报告、日志verbosity和内部状态一致性检查。
 
-## 10. Stage 7：三主三从完整环境和回归扩展
+## 9. Stage 6：三主三从完整环境和回归扩展
 
 本阶段将稳定的单端口组件扩展到三主三从完整AXI3 Interconnect验证环境，并补齐系统级检查能力。
 
@@ -193,7 +199,7 @@ AXI3写数据/读数据交织
 
 单端口Driver和Monitor在本阶段不应改为直接操作全局端口数组。三主三从能力应主要通过组件实例化、配置、连接和跨端口检查实现。
 
-## 11. 阶段推进原则
+## 10. 阶段推进原则
 
 整体实现遵循以下原则：
 

@@ -18,12 +18,12 @@ class axi_m_agent_cfg #(
   ).mon_mp mon_vif_t;
 
   uvm_active_passive_enum is_active;
-  int unsigned            port_index;
+  int unsigned            port_index; //当前master端口编号，区分多个master端口
   drv_vif_t               drv_vif;
   mon_vif_t               mon_vif;
-  axi_ready_mode_e        bready_mode;
-  axi_ready_mode_e        rready_mode;
-  int unsigned            max_read_outstanding;
+  axi_ready_mode_e        bready_mode; //B通道ready产生策略
+  axi_ready_mode_e        rready_mode; //R通道ready产生策略
+  int unsigned            max_read_outstanding; //允许同时存在的未完成的读事务数量
   int unsigned            max_write_outstanding;
 
   `uvm_object_param_utils_begin(
