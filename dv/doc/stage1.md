@@ -2,13 +2,13 @@
 
 editor：Codex / 项目讨论结论整理
 
-date：2026-09-13
+date：2026-09-13（2026-09-15同步当前实现与运行结果）
 
-状态：已审核冻结；Stage 1A和Stage 1B均已实施并通过；2026-09-15完成目录收敛
+状态：已审核冻结；Stage 1A和Stage 1B均已实施并通过；当前代码结构、QuestaSim入口和审核结果已同步
 
 ## 1. 文档目的
 
-本文档是[stage.md](./stage.md)中“Stage 1：基础组件和单端口最小纵向闭环”的详细执行工单，规定Stage 1需要实现的组件、测试支架、最小集成环境、实现边界和验收方法。
+本文档是[stage.md](./stage.md)中“Stage 1：基础组件和单端口最小纵向闭环”的详细执行工单，同时记录Stage 1冻结后的实际代码结构、当前连接方式、定向事务和运行审核结果。若工单早期描述与“当前实现”小节存在差异，以当前仓库代码和本文最新实施记录为准。
 
 Stage 1在Stage 0公共契约基础上完成两层工作：
 
@@ -72,25 +72,25 @@ Stage 1不得实现以下能力：
 - 完整protocol assertion集合。
 - functional coverage和随机压力回归。
 
-### 2.4 当前实现基线
+### 2.4 当前实现快照
 
-Stage 1开始前，新`dv`环境已经具备：
+当前Stage 1代码已经形成可独立编译和运行的单端口DUT闭环：
 
-- `dv/common/axi_types_pkg.sv`。
-- `dv/tb/axi_if.sv`。
-- `dv/env/axi_req_item.sv`。
-- `dv/env/axi_rsp_item.sv`。
-- `dv/env/master/axi_m_agent_cfg.sv`。
-- `dv/env/slave/axi_s_agent_cfg.sv`。
-- `dv/env/axi_env_cfg.sv`。
-- `dv/env/master/axi_m_sequencer.sv`。
-- `dv/env/slave/axi_s_sequencer.sv`。
-- `dv/env/axi_env_pkg.sv`。
-- Stage 0独立文件列表、Makefile、测试package和测试顶层。
+- 公共参数位于`dv/common/axi_types_pkg.sv`：地址32 bit、数据32 bit、上游ID 4 bit、下游ID 8 bit、LEN 4 bit，物理DUT为三主三从。
+- `dv/env`保留可参数化的item、channel event、cfg、Driver、Monitor、Sequencer、Agent、`axi_env`和基础event comparator。
+- 当前测试环境把`axi_env`特化为一个Master Agent和一个Slave Agent；物理顶层只把这两个Agent连接到DUT的M0和S0。
+- `dv/tb/tb.sv`统一产生10 ns时钟和低有效reset，例化真实`axi_interconnect`，完成接口bridge、cfg传递和`run_test()`调用。
+- `dv/tc`保留`axi_base_test`、`axi_write_test`和`axi_read_test`；Stage 1A独立测试支架在审核完成后已删除。
+- `sim/Makefile`和`sim/sim.f`是当前唯一的QuestaSim编译仿真入口，生成物存放在`sim/work`。
 
-Stage 0已经使用QuestaSim 10.6c和UVM 1.1d完成独立编译及基础对象smoke。Stage 1实施不得破坏Stage 0回归。
+当前保留的定向事务均为`len=0`的单拍INCR事务：
 
-仓库中的旧`uvm_tb`环境不是Stage 1实现基线，只能作为历史参考。`design/axi_slave_dut.sv`的接口属于另一种AXI RAM模型，缺少当前AXI3子集的WID且LEN宽度和reset定义不同，不作为Stage 1 Driver对端或闭环DUT。
+| Test | 上游请求 | 下游响应 | 端到端检查 |
+|---|---|---|---|
+| `axi_write_test` | ID=`4'h5`，ADDR=`32'h0000_0080`，DATA=`32'hDEAD_BEEF`，STRB=`4'hF` | BID使用扩展ID，BRESP=`OKAY` | AW/W/B各匹配1次 |
+| `axi_read_test` | ID=`4'h5`，ADDR=`32'h0000_0100` | RID使用扩展ID，RDATA=`32'hCAFE_BABE`，RRESP=`OKAY`，RLAST=1 | AR/R各匹配1次 |
+
+Stage 0曾使用QuestaSim 10.6c和UVM 1.1d完成独立对象smoke；其一次性测试入口在目录收敛后未保留，因此当前日常审核以Stage 1真实DUT闭环为准。旧`uvm_tb`及其他历史testbench不进入当前`sim.f`。
 
 # 第一部分：Stage 1基础验证框架和TLM连接
 
@@ -101,7 +101,10 @@ Stage 0已经使用QuestaSim 10.6c和UVM 1.1d完成独立编译及基础对象sm
 Stage 1使用同一组正式Driver、Monitor、Sequencer和Agent完成两层验证：Stage 1A中用独立pin-level测试支架验证组件本身，Stage 1B中撤去pin-level对端并连接真实AXI Interconnect DUT。
 
 ```text
-                                     stage1_e2e_test
+                         axi_write_test / axi_read_test
+                              extends axi_base_test
+                                      │
+                                axi_test_env env
 ┌──────────────────── axi_m_agent[0] ────────────────────┐
 │ Master sequence → m_sequencer → axi_m_driver          │
 │                                      │ m_drv_mp        │
@@ -157,11 +160,14 @@ axi_s_agent[0]
 ├── axi_s_driver
 └── axi_s_monitor
 
-stage1_e2e_test
-├── axi_m_agent[0]
-├── axi_s_agent[0]
-└── stage1_e2e_checker
+axi_base_test
+└── axi_test_env env
+    ├── axi_m_agent[0]
+    ├── axi_s_agent[0]
+    └── stage1_e2e_checker
 ```
+
+`tb.sv`只创建物理interface、DUT和`env_cfg`。`axi_base_test`从`uvm_config_db`取得同一个`env_cfg`并创建`axi_test_env`；具体的`axi_write_test`或`axi_read_test`继承base test，只配置并启动本用例所需的Master sequence和Slave reactive sequence。
 
 ### Stage 1A组件独立测试连接
 
@@ -194,21 +200,21 @@ pin-level peer只完成当前组件测试所需的确定性握手、响应或检
 
 ### 三类Checker的用途和边界
 
-Stage 1需要三种Checker，但它们用于不同层次，不能相互替代：
+Stage 1审核过程使用过三种检查方式，但它们用于不同层次，不能相互替代。当前仓库保留`axi_basic_event_comparator`和`stage1_e2e_checker`；`pin_peer_checker`随Stage 1A一次性独立测试支架删除。
 
 | Checker | 所属阶段/测试 | Expected来源 | Actual来源 | 主要检查 | 是否进入Stage 1B最终闭环 |
 |---|---|---|---|---|---|
-| `pin_peer_checker` | Stage 1A Driver unit | sequence item及测试预设握手计划 | interface引脚上的Driver实际输出 | Driver信号映射、VALID时序、stall稳定、READY和LAST派生 | 否 |
-| `axi_basic_event_comparator` | Stage 1A Monitor unit | pin-level waveform source同步创建的expected event | Monitor `channel_ap`发布的actual event | Monitor是否漏采、重复采样、通道标记及4-state payload是否正确 | 否 |
+| `pin_peer_checker` | Stage 1A历史Driver unit | sequence item及测试预设握手计划 | interface引脚上的Driver实际输出 | Driver信号映射、VALID时序、stall稳定、READY和LAST派生 | 否，已删除 |
+| `axi_basic_event_comparator` | Stage 1A Monitor unit和后续同类型event比较基础 | pin-level waveform source同步创建的expected event | Monitor `channel_ap`发布的actual event | Monitor是否漏采、重复采样、通道标记及4-state payload是否正确 | 否，组件仍保留在`dv/env` |
 | `stage1_e2e_checker` | Stage 1B DUT闭环 | 请求方向来自上游Monitor；响应方向来自下游Monitor | 请求方向来自下游Monitor；响应方向来自上游Monitor | DUT转发、payload、ID扩展/恢复、响应透传、丢失和重复 | 是 |
 
-三种Checker都需要执行并通过：
+三种检查在Stage 1A/1B审核时均已执行并通过：
 
 - `pin_peer_checker`证明正式Driver能够把item正确转换为接口行为。
 - `axi_basic_event_comparator`证明正式Monitor能够把接口握手正确转换为event。
 - `stage1_e2e_checker`在前两者可信的基础上检查请求和响应是否正确穿过真实DUT。
 
-Stage 1B通过不能替代前两种组件级检查；否则端到端失败时无法判断问题来自Driver、Monitor还是DUT。
+Stage 1B通过不能在审核意义上替代前两种组件级检查。当前日常回归只保留真实DUT闭环，组件级结论沿用已冻结的Stage 1A审核记录；若后续修改Driver或Monitor，应重新建立相应unit支架，而不能只依赖端到端用例。
 
 Slave Monitor `req_ap`的重建请求由Monitor unit中的test-level assertion直接检查。它是针对`axi_req_item`的测试断言，不是第四个可复用Checker组件，也不进入Stage 1B的端到端判定。
 
@@ -288,6 +294,32 @@ Slave Driver负责驱动`AWREADY/WREADY/ARREADY`和B/R响应。请求内容只�
 | 完整性和因果关系 | 各方向进入Checker的expected队列、已匹配请求上下文和期望计数 | 各方向进入Checker的actual队列和实际计数 | 每个event只匹配一次；B/R不得早于对应完整请求；无漏传、重复、额外event；test结束时所有队列和上下文清空 |
 
 Stage 1B为单端口、单笔、单拍环境，Checker可以按通道分别使用FIFO顺序匹配，但不得比较固定`sample_cycle`或要求上下游具有固定周期差。sequence item、Driver内部状态和reactive response计划都不能直接作为端到端actual；这样才能保持对DUT的黑盒判定。
+
+### 当前M0到S0的ID宽度和路由编码
+
+上游和下游ID宽度在`dv/common/axi_types_pkg.sv`中分别定义为：
+
+```systemverilog
+AXI_M_ID_WIDTH = 4;
+AXI_S_ID_WIDTH = 8;
+```
+
+`M_AXI_AWID[0]`中的`[0]`是物理端口数组下标，不是DUT内部Master路由编码。当前RTL在`axi_interconnect.v`中固定使用：M0=`2'b01`、M1=`2'b10`、M2=`2'b11`。S0的路由编码同样为`2'b01`。M0请求转发到S0时，`axi_mtos_m3.v`按以下方式扩展AWID/ARID：
+
+```text
+downstream_id = {slave_route[1:0], master_route[1:0], original_id[3:0]}
+```
+
+因此当前定向用例中：
+
+```text
+M_AXI_*[0] original_id = 4'h5
+S0 route                 = 2'b01
+M0 route                 = 2'b01
+S_AXI_*[0] expanded_id   = {2'b01, 2'b01, 4'h5} = 8'h55
+```
+
+返回B/R响应时，DUT用扩展ID中的Master路由位选择返回端口，并把低4位原始ID恢复到M0。当前`stage1_e2e_checker.expand_id()`固定实现同一`{2'b01, 2'b01, original_id}`规则，所以它只适用于本Stage的M0到S0闭环，不是三主三从通用ID模型。
 
 ### TLM通信连接说明
 
@@ -1152,48 +1184,55 @@ RVALID=0
 
 ### 12.2 reset状态处理
 
-- reset优先于正常驱动和ALWAYS_READY策略。
-- reset清除当前通道锁、待发送上下文和Monitor部分重建状态。
-- reset前未完成或部分完成的事务不得自动重放。
-- reset释放后至少保持一个完整clocking event空闲。
-- 已取得但尚未`item_done()`的item必须被明确结束，不能造成sequencer永久挂起。
-- reset前已经`item_done()`但尚未完成总线传输的Driver快照可以被丢弃，但不得修改sequence原始对象。
-- `axi_basic_event_comparator`和`stage1_e2e_checker`必须在相同reset边界清除未完成匹配状态；`pin_peer_checker`同步清除测试支架中的未完成握手状态。
+- Master/Slave Driver在获取新item前等待`ARESETn===1'b1`。
+- Master Driver取得request后先clone；写快照在`item_done()`前同时放入AW/W mailbox，读快照在`item_done()`前放入AR mailbox。
+- Slave Driver取得response后先clone，并在`item_done()`前放入B或R mailbox。
+- 各通道发送task在reset中撤销自己驱动的VALID和payload；READY task使用明确的reset/normal分支驱动0或1。
+- `watch_reset()`只清理共享busy/ID状态和mailbox，旧快照不在reset释放后重新入队。
+- Master/Slave Monitor在reset期间不发布event；Slave Monitor同时清除未完成的AW/W重建状态。
+- 当前`axi_basic_event_comparator`和`stage1_e2e_checker`没有reset端口或自动清空逻辑。当前保留用例只在启动reset之后发送事务，因此Checker不会跨reset保存业务状态；后续若加入运行中reset闭环，必须补充统一的Checker清理机制。
 
 ### 12.3 Stage 1 reset测试范围
 
-Stage 1至少测试：
+当前保留的`axi_write_test`和`axi_read_test`覆盖仿真启动reset、reset期间无业务event以及reset释放后完成新单拍事务。空闲期间再次reset和VALID stall期间reset曾在Stage 1A一次性unit支架中审核，当前目录收敛后的日常闭环用例未保留这两类场景。
 
-- 仿真启动reset。
-- 空闲期间reset。
-- 单个VALID处于stall时reset。
-- reset期间无Monitor event。
-- reset释放后组件能够完成新的单拍事务。
-
-burst中途reset、多outstanding清理、交织候选清理和容量状态恢复留到后续Stage。
+运行中reset的Checker统一清理、burst中途reset、多outstanding清理、交织候选清理和容量状态恢复留到后续Stage。
 
 ### 12.4 基础协议检查
 
-Stage 1只实现以下基础检查：
+当前代码保留以下运行时检查：
 
-- 五通道发送方在`VALID && !READY`期间保持VALID和payload稳定。
-- 实际握手时有效payload不得包含X/Z。
-- reset期间Testbench主动VALID/READY为0。
-- Monitor一次握手只发布一个event。
-- Stage 1单拍W必须带WLAST，单拍R必须带RLAST。
+- Master Driver检查B/R响应是否存在待完成请求、返回ID是否一致，以及单拍R是否带RLAST。
+- Slave Monitor检查AWID/WID一致、AWLEN/ARLEN为0，以及单拍W是否带WLAST。
+- `stage1_e2e_checker`使用4-state比较检查五通道payload、M0/S0端口位置、ID扩展/恢复、B/R因果关系、重复/遗漏和结束时pending状态。
+- `axi_base_test.finish_test()`汇总e2e mismatch、pending event和Slave request FIFO，并以UVM错误数判定用例结果。
 
-Assertion或test checker必须区分环境驱动违规和DUT输出违规。响应依赖、完整burst LAST计数、4KB、ordering、outstanding和仲裁规则不在本Stage实现。
+当前接口中没有SVA集合，stall稳定性和握手X/Z也没有作为独立常驻assertion实现；Stage 1A的pin-level检查支架已经删除。响应依赖、完整burst LAST计数、4KB、ordering、outstanding和仲裁规则继续留给后续Stage。
+
+### 12.5 已落地的代码组织风格
+
+- `axi_if`只用modport声明方向，不使用带`input #1step`或`output #0`偏斜的clocking block。
+- Driver和Monitor通过`vif.signal`直接访问接口，并用`@(posedge vif.ACLK)`同步；Driver使用非阻塞赋值驱动信号。
+- `axi_channel_event`、Master/Slave Driver和Master/Slave Monitor在类内声明`extern`方法，在同一文件的`endclass`之后实现；内部task不加`local`。
+- Driver不再包含`valid_stage1_request()`一类重复事务边界检查；请求字段能力由sequence、Monitor和Checker按职责检查。
+- reset值和正常值采用清晰的`if/else`分支赋值，避免使用复位比较表达式直接生成控制信号。
+- 详细约束以`dv/doc/code_style.md`为准。
 
 ## 13. S1-11：建立Package、文件组织和回归入口
 
-### 13.1 建议文件组织
+### 13.1 当前项目代码结构
 
-Stage 1实施后至少具备：
+当前Stage 1相关源码和仿真入口如下：
 
 ```text
 dv/
 ├── common/
 │   └── axi_types_pkg.sv
+├── doc/
+│   ├── code_style.md
+│   ├── stage.md
+│   ├── stage0.md
+│   └── stage1.md
 ├── env/
 │   ├── axi_env_pkg.sv
 │   ├── axi_channel_event.sv
@@ -1230,19 +1269,46 @@ dv/
 ├── tb/
 │   ├── axi_if.sv
 │   └── tb.sv
-└── ...
+
+rtl/
+├── axi_interconnect.v
+├── axi_crossbar.v
+├── axi_mtos_m3.v
+├── axi_stom_s3.v
+├── axi_arbiter_mtos_m3.v
+├── axi_arbiter_stom_s3.v
+├── axi_default_slave.v
+├── axi_fifo_sync.v
+├── round_robin_m2s.v
+├── round_robin_s2m.v
+├── sid_buffer.v
+└── reorder.v
 
 sim/
 ├── Makefile
 ├── sim.f
-└── work/                 # 编译库、日志和WLF波形，Git忽略
+└── work/
+    ├── lib/              # Questa work编译库
+    ├── log/              # compile.log和各test日志
+    ├── wave/             # <test>.wlf
+    ├── cov/              # UCDB和HTML覆盖率报告
+    └── modelsim.ini      # 本地library mapping
 ```
 
-`axi_test_pkg.sv`是测试代码的统一编译和类型注册入口，不属于冗余文件。Stage 1A审核使用过的pin-level peer、`pin_peer_checker`及独立unit test package在组件审核完成后删除；`stage1_e2e_checker`仍保持测试支架身份，不include进生产环境package。
+各目录职责为：`dv/env`只放可复用验证组件，`dv/seq`放sequence，`dv/tc`放测试及测试专用env/checker，`dv/tb`只保留interface和唯一顶层，`rtl`放DUT源码，`sim`联合编译RTL与DV并保存运行产物。
+
+仓库根目录还保留以下历史或参考内容，但它们不进入当前`sim/sim.f`：
+
+- `doc/`：总体验证规范、框架规范、历史讨论摘要和更细测试计划。
+- `design/`：历史AXI slave模型，接口契约与当前AXI3 Interconnect环境不同。
+- `uvm_tb/`：旧验证环境和旧测试用例，仅作为历史参考。
+- `rtl/axi_interconnect_tb.v`和`rtl/filelist.f`：RTL历史测试入口；当前统一顶层为`dv/tb/tb.sv`。
+
+`axi_test_pkg.sv`是测试代码的统一编译、typedef和factory注册入口，不属于冗余文件。`axi_test_env`继承一主一从特化的`axi_env`并增加`stage1_e2e_checker`。Stage 1A审核使用过的pin-level peer、`pin_peer_checker`及独立unit test package在组件审核完成后删除；`stage1_e2e_checker`仍保持测试支架身份，不include进生产环境package。
 
 ### 13.2 `axi_env_pkg` include顺序
 
-推荐顺序：
+当前`axi_env_pkg.sv`的实际include顺序：
 
 ```text
 1. axi_req_item.sv
@@ -1263,7 +1329,7 @@ sim/
 16. axi_basic_event_comparator.sv
 ```
 
-具体顺序可以根据类依赖微调，但不得产生循环include或把interface源码include到package中。
+`axi_if.sv`由`sim.f`在package之前单独编译，不include到package中。
 
 ### 13.3 编译顺序
 
@@ -1284,24 +1350,32 @@ Stage 1总体编译顺序为：
 
 ### 13.4 Makefile目标
 
-根目录`sim/Makefile`提供：
+`sim/Makefile`当前提供：
 
 ```text
-make compile
-make run TESTNAME=axi_write_test SEED=1
-make run TESTNAME=axi_read_test SEED=1
-make regress SEED=1
 make clean
+make clean_all
+make com
+make sim test=axi_write_test SEED=1
+make all test=axi_read_test dump=y SEED=1
+make debug test=axi_write_test dump=y SEED=1
+make wave test=axi_write_test
+make all test=axi_read_test cov=y SEED=1
+make cov_report test=axi_read_test
+make regress test=axi_write_test reg_times=20
 ```
 
-要求：
+当前行为：
 
-- `make run`把`TESTNAME`通过`+UVM_TESTNAME`传给顶层的`run_test()`。
-- `make regress`执行当前保留的读、写单端口闭环测试。
-- 每个测试使用独立日志文件并记录UVM test name和seed。
-- 编译库、日志和WLF波形统一存放在`sim/work/`。
-- 从干净构建目录可重复运行。
-- 新文件列表不得引用旧`uvm_tb`环境。
+- `make all`依次执行`clean`、`com`和`sim`；`make com`只编译，`make sim`使用已有编译库仿真。
+- 变量名为小写`test`，通过`+UVM_TESTNAME=$(test)`传给顶层`run_test()`；当前不使用旧的`TESTNAME`写法。
+- `dump=y`记录`m_if`、`s_if`和`dut`层次，生成`work/wave/<test>.wlf`；`make wave`用Questa打开该WLF。
+- `cov=y`启用Questa代码覆盖率，生成`work/cov/<test>.ucdb`；`make cov_report`生成HTML报告。这里是代码覆盖率，不是Stage 1未实现的UVM functional coverage。
+- `rand=y`自动生成seed；否则`SEED`默认0。`regress`按`reg_times`重复当前选定的一个`test`，不会自动同时运行读写两个test。
+- QuestaSim 10.6c会把名为`dump`的环境变量识别为内部层次转储开关，因此Makefile使用`unexport dump`，但用户侧`dump=y/n`用法不变。
+- `clean`删除`work/lib`和`work/modelsim.ini`，保留日志、波形和覆盖率；`clean_all`删除整个`work`。
+- 仿真后脚本同时检查`AXI_TC_PASS`、`UVM_ERROR : 0`和`UVM_FATAL : 0`，任一条件不满足则Make返回失败。
+- `sim.f`按上一小节的编译顺序引用当前RTL和DV，不引用旧`uvm_tb`。
 
 # 第三部分：Stage 1验收方案
 
@@ -1450,7 +1524,9 @@ Stage 1验收分为Stage 1A组件级验收和Stage 1B最小闭环验收。
 - 单拍VALID stall期间reset会撤销VALID、清零payload并终止旧事务。
 - reset前未完成事务不会在reset释放后自动重放。
 - reset不会造成sequencer永久挂起。
-- Monitor、`axi_basic_event_comparator`和`stage1_e2e_checker`在一致边界清理状态；`pin_peer_checker`清除未完成的pin-level握手记录。
+- Stage 1A历史unit支架在测试结束时确认Monitor重建状态和pin-level检查状态无残留。
+
+当前保留的读写闭环只重新执行前两项启动reset检查；运行中reset和Checker自动清理尚未形成常驻回归，具体边界见12.2和12.3。
 
 ### 24.2 基础协议检查验收
 
@@ -1458,7 +1534,9 @@ Stage 1验收分为Stage 1A组件级验收和Stage 1B最小闭环验收。
 - 对非法X/Z握手波形的测试支架能够报告错误。
 - Monitor不会对未握手周期重复发布event。
 - 单拍W/R的LAST检查通过。
-- assertion报告能够区分环境侧和DUT侧违规来源。
+- pin-level支架能够区分环境侧和DUT侧违规来源。
+
+上述stall和X/Z检查属于Stage 1A历史unit审核内容；当前仓库没有保留对应支架，也没有常驻SVA集合。当前可重跑检查是Monitor握手发布、单拍LAST、Driver响应关联和端到端4-state比较。
 
 ### 24.3 Stage边界检查
 
@@ -1496,13 +1574,13 @@ Stage 1满足以下全部条件才可标记完成：
 
 1. 本工单已经审核并冻结。
 2. S1-01～S1-11全部实施完成。
-3. Stage 0回归继续通过。
-4. A1-01～A1-07组件级验收全部通过。
+3. Stage 0在目录收敛前的历史回归通过，结果已记录。
+4. A1-01～A1-07组件级历史验收全部通过，当前保留组件与审核版本一致。
 5. A1-08单拍写闭环通过。
 6. A1-09单拍读闭环通过。
-7. A1-10 reset、协议和边界检查通过。
+7. A1-10历史unit检查通过；当前保留闭环的启动reset、单拍协议和Stage边界检查通过。
 8. 编译及仿真无非预期warning、error或fatal。
-9. `pin_peer_checker`、`axi_basic_event_comparator`、`stage1_e2e_checker`以及请求重建测试断言的状态在对应测试结束时全部清空。
+9. Stage 1A历史unit审核结束时`pin_peer_checker`和`axi_basic_event_comparator`无pending；当前闭环结束时`stage1_e2e_checker.pending_count()==0`且Slave request FIFO为空。
 10. 新`dv`环境未引用旧`uvm_tb`代码。
 11. 实施结果、工具版本、命令和已知限制已经记录。
 
@@ -1527,16 +1605,21 @@ Stage 1A已经完成组件级验收，Stage 1B已经完成DUT单端口闭环验�
 
 | 记录项 | 实施结果 |
 |---|---|
-| 实施日期 | Stage 1A：2026-09-13；Stage 1B：2026-09-14 |
+| 实施日期 | Stage 1A：2026-09-13；Stage 1B：2026-09-14；当前结构与运行复核：2026-09-15 |
 | 工具版本 | QuestaSim 10.6c，UVM 1.1d |
-| 回归命令 | 当前：在`sim/`执行`make regress SEED=1`；历史Stage 1A/1B验收命令见原始实施记录 |
-| Stage 0结果 | `stage0_smoke_test`通过，最终`UVM_ERROR=0`、`UVM_FATAL=0` |
-| Stage 1A编译 | Errors 0，Warnings 0 |
-| Stage 1A结果 | 7个独立UVM test全部通过，每个测试最终`UVM_ERROR=0`、`UVM_FATAL=0` |
-| Stage 1B编译 | 统一`tb`、RTL、Checker和测试package编译Errors 0，Warnings 0 |
-| Stage 1B结果 | 当前`axi_write_test`、`axi_read_test`均通过，每个测试最终`UVM_ERROR=0`、`UVM_FATAL=0`；目录收敛前的reset恢复测试也已通过 |
+| 当前编译命令 | 在`sim/`执行`make clean`后执行`make com`；Questa使用`sim.f`和本地`work/modelsim.ini` |
+| 当前仿真命令 | `make sim test=axi_write_test dump=y SEED=1`；`make sim test=axi_read_test dump=y SEED=1` |
+| 当前覆盖率命令 | `make all test=<test> cov=y SEED=1`，随后执行`make cov_report test=<test>` |
+| Stage 0结果 | 历史审核：`stage0_smoke_test`通过，最终`UVM_ERROR=0`、`UVM_FATAL=0`；目录收敛后一次性入口未保留 |
+| Stage 1A编译 | 历史审核：Errors 0，Warnings 0 |
+| Stage 1A结果 | 历史审核：7个独立UVM test全部通过；其测试支架现已删除，当前不能直接重跑 |
+| 当前Stage 1编译 | 2026-09-15使用QuestaSim 10.6c重新编译统一`tb`、RTL、env、sequence、checker和test package：Errors 0，Warnings 0 |
+| 当前写闭环 | `axi_write_test`通过；AW/W/B各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_write_test.wlf` |
+| 当前读闭环 | `axi_read_test`通过；AR/R各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_read_test.wlf` |
+| 代码覆盖率入口 | 已审核可生成`work/cov/<test>.ucdb`和`work/cov/<test>_report/index.html`；不等同于functional coverage |
 | DUT使用情况 | Stage 1A不例化DUT；Stage 1B例化真实`axi_interconnect`并只启用M0和S0 |
 | 保留项 | `S0-OPEN-01`继续保留；`S1-LIMIT-01`仅在Stage 1B定向写smoke中使用 |
+| 当前运行注意事项 | 如果Questa GUI/`vish`仍打开并占用`work/lib`，`make clean`会打印文件占用错误；关闭相关GUI后再执行干净编译。系统`MODELSIM`警告不影响当前命令，因为`vlog/vmap/vsim`均显式指定`-modelsimini work/modelsim.ini` |
 
 Stage 1A审核时通过、目录收敛后已删除测试支架的独立测试为：
 
