@@ -1,55 +1,35 @@
-# TEST=read_outstanding_test
-#TEST=write_outstanding_test
-TEST=default_write_arbiter_test 
-SCALE=1ns
-FILE = testname.f
-TEST_NAMES =`cat $(FILE)`
+UVM_HOME ?= D:/questasim64_10.6c/verilog_src/uvm-1.1d/src
+WORK_DIR ?= work
+TESTNAME ?= axi_write_test
+SEED     ?= 1
 
-VCS_FLAGS+= -R +v2k -debug_access+all \
-			-timescale=1ns/1ps  -fsdb +define+FSDB -l com.log
+TESTS := axi_write_test axi_read_test
+VLOG_FLAGS := -sv -L mtiUvm +incdir+$(UVM_HOME)
 
-VCS_FLAGS+=-sverilog -ntb_opts uvm-1.2 -f flist -timescale=1ns/1ps -cm line+tgl+cond+branch+assert+fsm -assert -full64 -LDFLAGS '-Wl,--no-as-needed'
+.PHONY: all compile run regress $(TESTS) clean
+
+all: run
 
 compile:
-			@echo "Compiling Design"
-			vcs $(VCS_FLAGS)
-			# vcs -sverilog -ntb_opts uvm-1.2 -f flist -timescale=1ns/1ps -cm line+tgl+cond+branch+assert+fsm -assert -full64 -LDFLAGS '-Wl,--no-as-needed'
-compile_cov:
-			@echo "Compiling Design"
-			vcs -sverilog -ntb_opts uvm-1.2 -f flist -timescale=1ns/1ps -cm line+tgl+cond+branch+assert+fsm -assert -full64 -LDFLAGS '-Wl,--no-as-needed'
+	if not exist "$(WORK_DIR)" vlib "$(WORK_DIR)"
+	vlog $(VLOG_FLAGS) -work "$(WORK_DIR)" -f sim.f \
+		-l "$(WORK_DIR)/compile.log"
 
+run: compile
+	vsim -c -L mtiUvm work.tb +UVM_TESTNAME=$(TESTNAME) \
+		-sv_seed $(SEED) -wlf "$(WORK_DIR)/$(TESTNAME).wlf" \
+		-do "log -r /*; run -all; quit -code 0" \
+		-l "$(WORK_DIR)/$(TESTNAME).log"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(WORK_DIR)/$(TESTNAME).log'; if (($$text -notmatch 'AXI_TC_PASS') -or ($$text -notmatch 'UVM_ERROR\s*:\s*0') -or ($$text -notmatch 'UVM_FATAL\s*:\s*0')) { exit 1 }"
 
-run:
-			@echo "Running Tests"
-			@for i in $(TEST_NAMES); do \
-				./simv -l $$i.log +UVM_TIMEOUT=9000000 +UVM_TESTNAME=$$i;\
-			done
+$(TESTS): compile
+	vsim -c -L mtiUvm work.tb +UVM_TESTNAME=$@ \
+		-sv_seed $(SEED) -wlf "$(WORK_DIR)/$@.wlf" \
+		-do "log -r /*; run -all; quit -code 0" \
+		-l "$(WORK_DIR)/$@.log"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(WORK_DIR)/$@.log'; if (($$text -notmatch 'AXI_TC_PASS') -or ($$text -notmatch 'UVM_ERROR\s*:\s*0') -or ($$text -notmatch 'UVM_FATAL\s*:\s*0')) { exit 1 }"
 
-test-list:
-			@for i in $(TEST_NAMES); do \
-				echo $$i; \
-			done
-
-run_cov_all:		
-			@echo "Running Tests with Coverage"
-			@echo "${TEST_NAMES}"
-			rm -rf ${TEST_NAMES} ; mkdir ${TEST_NAMES};
-			@for i in $(TEST_NAMES); do \
-				./simv -l $$i.log +UVM_TIMEOUT=900000000 +UVM_TESTNAME=$$i -cm line+tgl+cond+branch+assert+fsm; \
-				cp -rf simv.vdb $$i/; \
-				mv $$i.log $$i/; \
-			done
-			urg -dir *_test/*.vdb -elfile all.el -excl_bypass_checks	
-
-run-test:
-			@echo "Running $(TEST) Test"
-			./simv -l ${TEST}.log +UVM_TIMEOUT=900000000 +UVM_TESTNAME=${TEST}
-
-dve: 		
-			dve -full64 -covdir *_test/*.vdb &
-verdi: 		
-			verdi -cov -covdir *_test/*.vdb &
+regress: $(TESTS)
 
 clean:
-			@echo "Cleaning up...."
-			rm -rf csrc DVEfiles urgReport simv.vdb ${TEST_NAMES} inter.vpd dump.vcd simv simv.daidir ucli.key vc_hdrs.h vcs.log .inter.vpd.uvm *.log
+	powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(WORK_DIR)') { Remove-Item -LiteralPath '$(WORK_DIR)' -Recurse -Force }"

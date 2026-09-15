@@ -22,6 +22,7 @@ package axi_env_pkg;
   `include "slave/axi_s_monitor.sv"
   `include "master/axi_m_agent.sv"
   `include "slave/axi_s_agent.sv"
+  `include "axi_env.sv"
   `include "axi_basic_event_comparator.sv"
 
 endpackage

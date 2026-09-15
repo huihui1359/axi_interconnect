@@ -4,7 +4,7 @@ editor：Codex / 项目讨论结论整理
 
 date：2026-09-13
 
-状态：已审核冻结；Stage 1A和Stage 1B均已实施并通过
+状态：已审核冻结；Stage 1A和Stage 1B均已实施并通过；2026-09-15完成目录收敛
 
 ## 1. 文档目的
 
@@ -1199,6 +1199,7 @@ dv/
 │   ├── axi_channel_event.sv
 │   ├── axi_basic_event_comparator.sv
 │   ├── axi_env_cfg.sv
+│   ├── axi_env.sv
 │   ├── axi_req_item.sv
 │   ├── axi_rsp_item.sv
 │   ├── master/
@@ -1218,26 +1219,26 @@ dv/
 │   ├── axi_m_single_write_seq.sv
 │   ├── axi_m_single_read_seq.sv
 │   └── axi_s_single_reactive_seq.sv
-├── test/
+├── tc/
 │   ├── support/
-│   │   ├── pin_peer_checker.sv
-│   │   └── stage1_e2e_checker.sv
-│   ├── stage1_unit_test_pkg.sv
-│   └── stage1_e2e_test_pkg.sv
+│   │   ├── stage1_e2e_checker.sv
+│   │   └── axi_test_env.sv
+│   ├── axi_test_pkg.sv
+│   ├── axi_base_test.sv
+│   ├── axi_write_test.sv
+│   └── axi_read_test.sv
 ├── tb/
 │   ├── axi_if.sv
-│   ├── axi_protocol_assertions.sv
-│   ├── stage1_reset_if.sv
-│   ├── stage1_unit_tb.sv
-│   └── stage1_e2e_tb.sv
-└── sim/
-    ├── stage0.f
-    ├── stage1_unit.f
-    ├── stage1_e2e.f
-    └── Makefile
+│   └── tb.sv
+└── ...
+
+sim/
+├── Makefile
+├── sim.f
+└── work/                 # 编译库、日志和WLF波形，Git忽略
 ```
 
-如果实施时把pin-level peer、`pin_peer_checker`和`stage1_e2e_checker`放入独立`test/support/`目录，必须保持其测试支架身份，不能include进生产环境package。
+`axi_test_pkg.sv`是测试代码的统一编译和类型注册入口，不属于冗余文件。Stage 1A审核使用过的pin-level peer、`pin_peer_checker`及独立unit test package在组件审核完成后删除；`stage1_e2e_checker`仍保持测试支架身份，不include进生产环境package。
 
 ### 13.2 `axi_env_pkg` include顺序
 
@@ -1258,7 +1259,8 @@ dv/
 12. slave/axi_s_monitor.sv
 13. master/axi_m_agent.sv
 14. slave/axi_s_agent.sv
-15. axi_basic_event_comparator.sv
+15. axi_env.sv
+16. axi_basic_event_comparator.sv
 ```
 
 具体顺序可以根据类依赖微调，但不得产生循环include或把interface源码include到package中。
@@ -1273,33 +1275,31 @@ Stage 1总体编译顺序为：
 3. axi_if.sv
 4. axi_env_pkg.sv
 5. axi_seq_pkg.sv
-6. Stage 1 assertions和测试package
-7. RTL设计源码（仅Stage 1B）
-8. 对应Stage 1测试顶层
+6. axi_test_pkg.sv
+7. RTL设计源码
+8. tb.sv
 ```
 
 不得直接使用包含旧testbench入口的历史RTL文件列表。Stage 1B文件列表只纳入`axi_interconnect`及其设计依赖模块和新的Stage 1顶层。
 
 ### 13.4 Makefile目标
 
-Makefile至少提供：
+根目录`sim/Makefile`提供：
 
 ```text
-make stage0
-make stage1_unit
-make stage1_e2e
-make stage1
+make compile
+make run TESTNAME=axi_write_test SEED=1
+make run TESTNAME=axi_read_test SEED=1
+make regress SEED=1
 make clean
 ```
 
 要求：
 
-- `make stage0`保留Stage 0回归能力。
-- `make stage1_unit`执行全部组件级测试。
-- `make stage1_e2e`执行单端口读写闭环测试。
-- `make stage1`至少依次覆盖Stage 0、Stage 1A和Stage 1B。
+- `make run`把`TESTNAME`通过`+UVM_TESTNAME`传给顶层的`run_test()`。
+- `make regress`执行当前保留的读、写单端口闭环测试。
 - 每个测试使用独立日志文件并记录UVM test name和seed。
-- 编译产物和日志与源码目录分离。
+- 编译库、日志和WLF波形统一存放在`sim/work/`。
 - 从干净构建目录可重复运行。
 - 新文件列表不得引用旧`uvm_tb`环境。
 
@@ -1312,7 +1312,8 @@ Stage 1验收分为Stage 1A组件级验收和Stage 1B最小闭环验收。
 - Stage 1A必须先证明Driver、Monitor、Agent、sequence和比较组件自身行为正确。
 - Stage 1B只能使用已经通过Stage 1A验收的正式组件建立闭环。
 - 端到端闭环通过不能替代组件级验收。
-- `pin_peer_checker`必须在A1-03/A1-04通过，`axi_basic_event_comparator`必须在A1-05/A1-07通过，`stage1_e2e_checker`必须在A1-08/A1-09通过。
+- Stage 1A审核阶段的`pin_peer_checker`和独立unit test只作为一次性验收支架；审核通过后的日常回归保留真实DUT闭环。
+- `axi_basic_event_comparator`保留在`dv/env`，用于同类型event的基础比较；`stage1_e2e_checker`用于当前上下游ID宽度不同的DUT闭环。
 - 所有测试使用新`dv`入口，不依赖旧`uvm_tb`。
 - 所有通过测试必须无非预期UVM warning/error/fatal及SystemVerilog fatal。
 
@@ -1528,16 +1529,16 @@ Stage 1A已经完成组件级验收，Stage 1B已经完成DUT单端口闭环验�
 |---|---|
 | 实施日期 | Stage 1A：2026-09-13；Stage 1B：2026-09-14 |
 | 工具版本 | QuestaSim 10.6c，UVM 1.1d |
-| 回归命令 | `make stage0 SEED=1`；`make stage1_unit SEED=1`；`make stage1_e2e SEED=1` |
+| 回归命令 | 当前：在`sim/`执行`make regress SEED=1`；历史Stage 1A/1B验收命令见原始实施记录 |
 | Stage 0结果 | `stage0_smoke_test`通过，最终`UVM_ERROR=0`、`UVM_FATAL=0` |
 | Stage 1A编译 | Errors 0，Warnings 0 |
 | Stage 1A结果 | 7个独立UVM test全部通过，每个测试最终`UVM_ERROR=0`、`UVM_FATAL=0` |
-| Stage 1B编译 | RTL、DUT bridge、Checker和测试顶层编译Errors 0，Warnings 0 |
-| Stage 1B结果 | 写闭环、读闭环和空闲reset恢复3个UVM test全部通过，每个测试最终`UVM_ERROR=0`、`UVM_FATAL=0` |
+| Stage 1B编译 | 统一`tb`、RTL、Checker和测试package编译Errors 0，Warnings 0 |
+| Stage 1B结果 | 当前`axi_write_test`、`axi_read_test`均通过，每个测试最终`UVM_ERROR=0`、`UVM_FATAL=0`；目录收敛前的reset恢复测试也已通过 |
 | DUT使用情况 | Stage 1A不例化DUT；Stage 1B例化真实`axi_interconnect`并只启用M0和S0 |
 | 保留项 | `S0-OPEN-01`继续保留；`S1-LIMIT-01`仅在Stage 1B定向写smoke中使用 |
 
-Stage 1A通过的独立测试为：
+Stage 1A审核时通过、目录收敛后已删除测试支架的独立测试为：
 
 1. `stage1_m_driver_unit_test`。
 2. `stage1_s_driver_unit_test`。
@@ -1547,8 +1548,7 @@ Stage 1A通过的独立测试为：
 6. `stage1_agent_unit_test`。
 7. `stage1_reactive_chain_unit_test`。
 
-Stage 1B通过的闭环测试为：
+当前保留的Stage 1B闭环测试为：
 
-1. `stage1_e2e_write_test`。
-2. `stage1_e2e_read_test`。
-3. `stage1_e2e_reset_test`。
+1. `axi_write_test`。
+2. `axi_read_test`。

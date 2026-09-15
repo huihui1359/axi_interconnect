@@ -1,9 +1,48 @@
-module stage1_dut_bridge(
-  axi_if.dut_slave_mp m_if,
-  axi_if.dut_master_mp s_if
-);
+`timescale 1ns/1ps
 
+module tb;
+
+  import uvm_pkg::*;
   import axi_types_pkg::*;
+  import axi_env_pkg::*;
+  import axi_seq_pkg::*;
+  import axi_test_pkg::*;
+
+  logic clk;
+  logic rst_n;
+  env_cfg_t env_cfg;
+
+  initial begin
+    clk = 1'b0;
+    forever #5ns clk = ~clk;
+  end
+
+  initial begin
+    rst_n = 1'b0;
+    repeat (2) @(posedge clk);
+    @(negedge clk);
+    rst_n = 1'b1;
+  end
+
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH),
+    .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH  (AXI_M_ID_WIDTH),
+    .LEN_WIDTH (AXI_LEN_WIDTH)
+  ) m_if (
+    .ACLK   (clk),
+    .ARESETn(rst_n)
+  );
+
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH),
+    .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH  (AXI_S_ID_WIDTH),
+    .LEN_WIDTH (AXI_LEN_WIDTH)
+  ) s_if (
+    .ACLK   (clk),
+    .ARESETn(rst_n)
+  );
 
   wire [AXI_M_ID_WIDTH-1:0] M_AXI_AWID[0:2];
   wire [AXI_ADDR_WIDTH-1:0] M_AXI_AWADDR[0:2];
@@ -146,6 +185,7 @@ module stage1_dut_bridge(
   assign s_if.rready     = S_AXI_RREADY[0];
 
   generate
+    //将未启用的 [1]、[2] 端口确定性置为空闲状态
     for (genvar index = 1; index < 3; index++) begin : inactive_ports
       assign M_AXI_AWID[index]    = '0;
       assign M_AXI_AWADDR[index]  = '0;
@@ -252,5 +292,43 @@ module stage1_dut_bridge(
     .S_AXI_RVALID   (S_AXI_RVALID),
     .S_AXI_RREADY   (S_AXI_RREADY)
   );
+
+  initial begin
+    env_cfg = env_cfg_t::type_id::create("env_cfg");
+    env_cfg.m_cfg[0].is_active = UVM_ACTIVE;
+    env_cfg.m_cfg[0].drv_vif   = m_if;
+    env_cfg.m_cfg[0].mon_vif   = m_if;
+    env_cfg.s_cfg[0].is_active = UVM_ACTIVE;
+    env_cfg.s_cfg[0].drv_vif   = s_if;
+    env_cfg.s_cfg[0].mon_vif   = s_if;
+
+    uvm_config_db#(env_cfg_t)::set(
+      null, "uvm_test_top", "env_cfg", env_cfg
+    );
+    uvm_root::get().set_timeout(5_000_000, 1'b1);
+    run_test();
+  end
+
+  final begin
+        uvm_report_server server;
+        int err_num, fatal_num;
+        integer exit_code;
+
+        server = uvm_report_server::get_server();
+        err_num = server.get_severity_count(UVM_ERROR);
+        fatal_num = server.get_severity_count(UVM_FATAL);
+
+        if (err_num != 0 || fatal_num != 0)begin
+             $display("+------------------------+");
+             $display("| T E S T    F A I L E D |");
+             $display("+------------------------+");
+
+        end else begin
+              $display("+------------------------+");
+              $display("| T E S T    P A S S E D |");
+              $display("+------------------------+");
+
+        end
+    end
 
 endmodule

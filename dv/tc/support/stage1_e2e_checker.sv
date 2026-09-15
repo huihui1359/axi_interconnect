@@ -16,7 +16,6 @@ class stage1_e2e_checker #(
     ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
   ) s_event_t;
   typedef logic [S_ID_WIDTH-1:0] sid_t;
-  typedef virtual stage1_reset_if reset_vif_t;
 
   uvm_analysis_imp_upstream #(m_event_t,
     stage1_e2e_checker #(
@@ -28,8 +27,6 @@ class stage1_e2e_checker #(
       ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
     )
   ) downstream_export;
-
-  reset_vif_t reset_vif;
 
   m_event_t upstream_aw_q[$];
   m_event_t upstream_w_q[$];
@@ -63,7 +60,6 @@ class stage1_e2e_checker #(
   extern function new(string name = "stage1_e2e_checker",
                       uvm_component parent = null);
   extern virtual function void build_phase(uvm_phase phase);
-  extern virtual task run_phase(uvm_phase phase);
   extern virtual function void write_upstream(m_event_t event_in);
   extern virtual function void write_downstream(s_event_t event_in);
   extern function logic [S_ID_WIDTH-1:0] expand_id(
@@ -94,17 +90,7 @@ function void stage1_e2e_checker::build_phase(uvm_phase phase);
   super.build_phase(phase);
   upstream_export   = new("upstream_export", this);
   downstream_export = new("downstream_export", this);
-  if (!uvm_config_db#(reset_vif_t)::get(this, "", "reset_vif", reset_vif))
-    `uvm_fatal("STAGE1_E2E_VIF", "stage1_e2e_checker requires reset_vif")
 endfunction
-
-task stage1_e2e_checker::run_phase(uvm_phase phase);
-  forever begin
-    @(posedge reset_vif.aclk);
-    if (reset_vif.aresetn !== 1'b1)
-      clear();
-  end
-endtask
 
 function void stage1_e2e_checker::write_upstream(m_event_t event_in);
   m_event_t snapshot;
