@@ -46,6 +46,10 @@ task axi_base_test::finish_test(string test_name);
     `uvm_error("AXI_TEST_CHECK", "End-to-end checker reported a mismatch")
   if (env.e2e_checker.pending_count() != 0)
     `uvm_error("AXI_TEST_CHECK", "End-to-end checker has pending events")
+  if (env.stage2_checker.mismatch_count != 0)
+    `uvm_error("AXI_TEST_CHECK", "Stage 2 checker reported a mismatch")
+  if (env.stage2_checker.pending_count() != 0)
+    `uvm_error("AXI_TEST_CHECK", "Stage 2 checker has pending activity")
   if (env.s_agents[0].sequencer.request_fifo.used() != 0)
     `uvm_error("AXI_TEST_CHECK", "Slave request FIFO is not empty")
 

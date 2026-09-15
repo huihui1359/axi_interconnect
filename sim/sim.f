@@ -1,6 +1,7 @@
 +incdir+../dv/env
 +incdir+../dv/seq
 +incdir+../dv/tc
++incdir+../dv/common
 
 ../dv/common/axi_types_pkg.sv
 ../dv/tb/axi_if.sv
@@ -21,4 +22,5 @@
 ../rtl/axi_crossbar.v
 ../rtl/axi_interconnect.v
 
+../dv/env/axi_protocol_assertions.sv
 ../dv/tb/tb.sv

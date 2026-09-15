@@ -9,7 +9,14 @@ package axi_test_pkg;
 
   `uvm_analysis_imp_decl(_upstream)
   `uvm_analysis_imp_decl(_downstream)
+  `uvm_analysis_imp_decl(_upstream_channel)
+  `uvm_analysis_imp_decl(_downstream_channel)
+  `uvm_analysis_imp_decl(_upstream_req)
+  `uvm_analysis_imp_decl(_downstream_req)
+  `uvm_analysis_imp_decl(_upstream_rsp)
+  `uvm_analysis_imp_decl(_downstream_rsp)
   `include "support/stage1_e2e_checker.sv"
+  `include "support/stage2_e2e_checker.sv"
 
   typedef virtual axi_if #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
@@ -38,13 +45,17 @@ package axi_test_pkg;
   typedef axi_m_single_read_seq #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
   ) m_read_seq_t;
-  typedef axi_s_single_reactive_seq #(
+  typedef axi_s_reactive_seq #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
   ) s_reactive_seq_t;
   typedef stage1_e2e_checker #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
     AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
   ) e2e_checker_t;
+  typedef stage2_e2e_checker #(
+    AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
+    AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
+  ) stage2_e2e_checker_t;
 
   `include "support/axi_test_env.sv"
   `include "axi_base_test.sv"

@@ -4,6 +4,7 @@
 class axi_test_env extends env_t;
 
   e2e_checker_t e2e_checker;
+  stage2_e2e_checker_t stage2_checker;
 
   `uvm_component_utils(axi_test_env)
 
@@ -23,13 +24,26 @@ endfunction
 
 function void axi_test_env::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  e2e_checker = e2e_checker_t::type_id::create("e2e_checker", this);
+  e2e_checker   = e2e_checker_t::type_id::create("e2e_checker", this);
+  stage2_checker = stage2_e2e_checker_t::type_id::create(
+    "stage2_checker", this
+  );
 endfunction
 
 function void axi_test_env::connect_phase(uvm_phase phase);
   super.connect_phase(phase);
   m_agents[0].monitor.channel_ap.connect(e2e_checker.upstream_export);
   s_agents[0].monitor.channel_ap.connect(e2e_checker.downstream_export);
+  m_agents[0].monitor.channel_ap.connect(
+    stage2_checker.upstream_channel_export
+  );
+  s_agents[0].monitor.channel_ap.connect(
+    stage2_checker.downstream_channel_export
+  );
+  m_agents[0].monitor.req_ap.connect(stage2_checker.upstream_req_export);
+  s_agents[0].monitor.req_ap.connect(stage2_checker.downstream_req_export);
+  m_agents[0].monitor.rsp_ap.connect(stage2_checker.upstream_rsp_export);
+  s_agents[0].monitor.rsp_ap.connect(stage2_checker.downstream_rsp_export);
 endfunction
 
 `endif

@@ -31,7 +31,7 @@ task axi_read_test::run_phase(uvm_phase phase);
 
   reactive_seq = s_reactive_seq_t::type_id::create("reactive_seq");
   reactive_seq.response_count = 1;
-  reactive_seq.read_data      = 32'hCAFE_BABE;
+  reactive_seq.read_data_base = 32'hCAFE_BABE;
   reactive_seq.response_code  = AXI_RESP_OKAY;
 
   fork

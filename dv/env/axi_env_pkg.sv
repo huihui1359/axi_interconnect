@@ -8,6 +8,7 @@ package axi_env_pkg;
   `uvm_analysis_imp_decl(_expected)
   `uvm_analysis_imp_decl(_actual)
 
+  `include "latency_gen.sv"
   `include "axi_req_item.sv"
   `include "axi_rsp_item.sv"
   `include "axi_channel_event.sv"

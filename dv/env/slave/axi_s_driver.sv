@@ -9,9 +9,6 @@ class axi_s_driver #(
 ) extends uvm_driver #(
   axi_rsp_item #(DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
 );
-  `uvm_component_param_utils(
-    axi_s_driver #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
-  )
 
   typedef axi_rsp_item #(DATA_WIDTH, ID_WIDTH, LEN_WIDTH) rsp_t;
   typedef axi_s_agent_cfg #(
@@ -26,6 +23,14 @@ class axi_s_driver #(
 
   mailbox #(rsp_t) b_queue;
   mailbox #(rsp_t) r_queue;
+
+  latency_gen awready_latency;
+  latency_gen wready_latency;
+  latency_gen arready_latency;
+
+  `uvm_component_param_utils(
+    axi_s_driver #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
+  )
 
   extern function new(string name = "axi_s_driver",
                       uvm_component parent = null);
@@ -44,11 +49,15 @@ class axi_s_driver #(
 endclass
 
 function axi_s_driver::new(
-  string name = "axi_s_driver", uvm_component parent = null
+  string name = "axi_s_driver",
+  uvm_component parent = null
 );
   super.new(name, parent);
-  b_queue = new();
-  r_queue = new();
+  b_queue         = new();
+  r_queue         = new();
+  awready_latency = latency_gen::type_id::create("awready_latency");
+  wready_latency  = latency_gen::type_id::create("wready_latency");
+  arready_latency = latency_gen::type_id::create("arready_latency");
 endfunction
 
 function void axi_s_driver::build_phase(uvm_phase phase);
@@ -59,11 +68,6 @@ function void axi_s_driver::build_phase(uvm_phase phase);
   vif = cfg.drv_vif;
   if (vif == null)
     `uvm_fatal("AXI_S_DRV_VIF", "Slave Driver requires cfg.drv_vif")
-
-  if ((cfg.awready_mode != ALWAYS_READY) ||
-      (cfg.wready_mode != ALWAYS_READY) ||
-      (cfg.arready_mode != ALWAYS_READY))
-    `uvm_fatal("AXI_S_DRV_MODE", "Stage 1 supports only ALWAYS_READY")
 endfunction
 
 task axi_s_driver::run_phase(uvm_phase phase);
@@ -87,7 +91,8 @@ task axi_s_driver::accept_items();
       @(posedge vif.ACLK);
 
     seq_item_port.get_next_item(rsp);
-    $cast(snapshot, rsp.clone());
+    if ((rsp == null) || !$cast(snapshot, rsp.clone()))
+      `uvm_fatal("AXI_S_DRV_CLONE", "Failed to clone response item")
 
     if (snapshot.dir == AXI_WRITE)
       b_queue.put(snapshot);
@@ -99,35 +104,83 @@ task axi_s_driver::accept_items();
 endtask
 
 task axi_s_driver::drive_awready();
+  int unsigned delay_cycles;
   vif.awready <= 1'b0;
+
   forever begin
-    @(posedge vif.ACLK);
+    vif.awready <= 1'b0;
+    while (vif.ARESETn !== 1'b1)
+      @(posedge vif.ACLK);
+
+    if (!awready_latency.randomize())
+      `uvm_fatal("AXI_S_AWREADY_LATENCY",
+                 "Failed to randomize AWREADY latency")
+    delay_cycles = awready_latency.get_delay();
+    repeat (delay_cycles)
+      @(posedge vif.ACLK);
+
     if (vif.ARESETn !== 1'b1)
-      vif.awready <= 1'b0;
-    else
-      vif.awready <= 1'b1;
+      continue;
+
+    vif.awready <= 1'b1;
+    do begin
+      @(posedge vif.ACLK);
+    end
+    while ((vif.ARESETn === 1'b1) && (vif.awvalid !== 1'b1));
   end
 endtask
 
 task axi_s_driver::drive_wready();
+  int unsigned delay_cycles;
   vif.wready <= 1'b0;
+
   forever begin
-    @(posedge vif.ACLK);
+    vif.wready <= 1'b0;
+    while (vif.ARESETn !== 1'b1)
+      @(posedge vif.ACLK);
+
+    if (!wready_latency.randomize())
+      `uvm_fatal("AXI_S_WREADY_LATENCY",
+                 "Failed to randomize WREADY latency")
+    delay_cycles = wready_latency.get_delay();
+    repeat (delay_cycles)
+      @(posedge vif.ACLK);
+
     if (vif.ARESETn !== 1'b1)
-      vif.wready <= 1'b0;
-    else
-      vif.wready <= 1'b1;
+      continue;
+
+    vif.wready <= 1'b1;
+    do begin
+      @(posedge vif.ACLK);
+    end
+    while ((vif.ARESETn === 1'b1) && (vif.wvalid !== 1'b1));
   end
 endtask
 
 task axi_s_driver::drive_arready();
+  int unsigned delay_cycles;
   vif.arready <= 1'b0;
+
   forever begin
-    @(posedge vif.ACLK);
+    vif.arready <= 1'b0;
+    while (vif.ARESETn !== 1'b1)
+      @(posedge vif.ACLK);
+
+    if (!arready_latency.randomize())
+      `uvm_fatal("AXI_S_ARREADY_LATENCY",
+                 "Failed to randomize ARREADY latency")
+    delay_cycles = arready_latency.get_delay();
+    repeat (delay_cycles)
+      @(posedge vif.ACLK);
+
     if (vif.ARESETn !== 1'b1)
-      vif.arready <= 1'b0;
-    else
-      vif.arready <= 1'b1;
+      continue;
+
+    vif.arready <= 1'b1;
+    do begin
+      @(posedge vif.ACLK);
+    end
+    while ((vif.ARESETn === 1'b1) && (vif.arvalid !== 1'b1));
   end
 endtask
 
@@ -154,11 +207,22 @@ task axi_s_driver::drive_b();
       @(posedge vif.ACLK);
     b_queue.get(rsp);
 
+    @(posedge vif.ACLK);
+    repeat (rsp.rsp_delay)
+      @(posedge vif.ACLK);
+
+    if (vif.ARESETn !== 1'b1) begin
+      clear_b();
+      continue;
+    end
+
     vif.bid    <= rsp.id;
     vif.bresp  <= rsp.bresp;
     vif.bvalid <= 1'b1;
 
-    do @(posedge vif.ACLK);
+    do begin
+      @(posedge vif.ACLK);
+    end
     while ((vif.ARESETn === 1'b1) && (vif.bready !== 1'b1));
     clear_b();
   end
@@ -166,21 +230,54 @@ endtask
 
 task axi_s_driver::drive_r();
   rsp_t rsp;
+  int unsigned beat_index;
   clear_r();
 
   forever begin
     while (vif.ARESETn !== 1'b1)
       @(posedge vif.ACLK);
     r_queue.get(rsp);
+    beat_index = 0;
+
+    @(posedge vif.ACLK);
+    repeat (rsp.rsp_delay)
+      @(posedge vif.ACLK);
+
+    if (vif.ARESETn !== 1'b1) begin
+      clear_r();
+      continue;
+    end
 
     vif.rid    <= rsp.id;
-    vif.rdata  <= rsp.rdata[0];
-    vif.rresp  <= rsp.rresp[0];
-    vif.rlast  <= 1'b1;
+    vif.rdata  <= rsp.rdata[beat_index];
+    vif.rresp  <= rsp.rresp[beat_index];
+    vif.rlast  <= (beat_index == int'(rsp.len));
     vif.rvalid <= 1'b1;
 
-    do @(posedge vif.ACLK);
-    while ((vif.ARESETn === 1'b1) && (vif.rready !== 1'b1));
+    while (vif.ARESETn === 1'b1) begin
+      do begin
+        @(posedge vif.ACLK);
+      end
+      while ((vif.ARESETn === 1'b1) && (vif.rready !== 1'b1));
+
+      if ((vif.ARESETn !== 1'b1) ||
+          (beat_index == int'(rsp.len)))
+        break;
+
+      clear_r();
+      repeat (rsp.rbeat_gap[beat_index])
+        @(posedge vif.ACLK);
+      beat_index++;
+
+      if (vif.ARESETn !== 1'b1)
+        break;
+
+      vif.rid    <= rsp.id;
+      vif.rdata  <= rsp.rdata[beat_index];
+      vif.rresp  <= rsp.rresp[beat_index];
+      vif.rlast  <= (beat_index == int'(rsp.len));
+      vif.rvalid <= 1'b1;
+    end
     clear_r();
   end
 endtask
@@ -190,7 +287,6 @@ task axi_s_driver::watch_reset();
   forever begin
     @(posedge vif.ACLK);
     if (vif.ARESETn !== 1'b1) begin
-      //清空队列
       while (b_queue.try_get(discarded));
       while (r_queue.try_get(discarded));
     end

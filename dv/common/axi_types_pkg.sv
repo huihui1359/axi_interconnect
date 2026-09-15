@@ -45,12 +45,6 @@ package axi_types_pkg;
     AXI_DATA_ADDRESS
   } axi_data_pattern_e;
 
-  typedef enum bit [1:0] {
-    ALWAYS_READY,
-    RANDOM_READY,
-    SCRIPTED_READY
-  } axi_ready_mode_e;
-
   typedef enum bit [2:0] {
     AXI_CHANNEL_AW,
     AXI_CHANNEL_W,

@@ -44,6 +44,52 @@ module tb;
     .ARESETn(rst_n)
   );
 
+  axi_protocol_assertions #(
+    .ADDR_WIDTH  (AXI_ADDR_WIDTH),
+    .DATA_WIDTH  (AXI_DATA_WIDTH),
+    .ID_WIDTH    (AXI_M_ID_WIDTH),
+    .LEN_WIDTH   (AXI_LEN_WIDTH),
+    .TB_IS_MASTER(1'b1)
+  ) m_protocol_assertions (
+    .ACLK   (m_if.ACLK),
+    .ARESETn(m_if.ARESETn),
+    .awid(m_if.awid), .awaddr(m_if.awaddr), .awlen(m_if.awlen),
+    .awsize(m_if.awsize), .awburst(m_if.awburst),
+    .awvalid(m_if.awvalid), .awready(m_if.awready),
+    .wid(m_if.wid), .wdata(m_if.wdata), .wstrb(m_if.wstrb),
+    .wlast(m_if.wlast), .wvalid(m_if.wvalid), .wready(m_if.wready),
+    .bid(m_if.bid), .bresp(m_if.bresp),
+    .bvalid(m_if.bvalid), .bready(m_if.bready),
+    .arid(m_if.arid), .araddr(m_if.araddr), .arlen(m_if.arlen),
+    .arsize(m_if.arsize), .arburst(m_if.arburst),
+    .arvalid(m_if.arvalid), .arready(m_if.arready),
+    .rid(m_if.rid), .rdata(m_if.rdata), .rresp(m_if.rresp),
+    .rlast(m_if.rlast), .rvalid(m_if.rvalid), .rready(m_if.rready)
+  );
+
+  axi_protocol_assertions #(
+    .ADDR_WIDTH  (AXI_ADDR_WIDTH),
+    .DATA_WIDTH  (AXI_DATA_WIDTH),
+    .ID_WIDTH    (AXI_S_ID_WIDTH),
+    .LEN_WIDTH   (AXI_LEN_WIDTH),
+    .TB_IS_MASTER(1'b0)
+  ) s_protocol_assertions (
+    .ACLK   (s_if.ACLK),
+    .ARESETn(s_if.ARESETn),
+    .awid(s_if.awid), .awaddr(s_if.awaddr), .awlen(s_if.awlen),
+    .awsize(s_if.awsize), .awburst(s_if.awburst),
+    .awvalid(s_if.awvalid), .awready(s_if.awready),
+    .wid(s_if.wid), .wdata(s_if.wdata), .wstrb(s_if.wstrb),
+    .wlast(s_if.wlast), .wvalid(s_if.wvalid), .wready(s_if.wready),
+    .bid(s_if.bid), .bresp(s_if.bresp),
+    .bvalid(s_if.bvalid), .bready(s_if.bready),
+    .arid(s_if.arid), .araddr(s_if.araddr), .arlen(s_if.arlen),
+    .arsize(s_if.arsize), .arburst(s_if.arburst),
+    .arvalid(s_if.arvalid), .arready(s_if.arready),
+    .rid(s_if.rid), .rdata(s_if.rdata), .rresp(s_if.rresp),
+    .rlast(s_if.rlast), .rvalid(s_if.rvalid), .rready(s_if.rready)
+  );
+
   wire [AXI_M_ID_WIDTH-1:0] M_AXI_AWID[0:2];
   wire [AXI_ADDR_WIDTH-1:0] M_AXI_AWADDR[0:2];
   wire [AXI_LEN_WIDTH-1:0] M_AXI_AWLEN[0:2];

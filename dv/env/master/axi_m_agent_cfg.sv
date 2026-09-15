@@ -21,8 +21,6 @@ class axi_m_agent_cfg #(
   int unsigned            port_index; //当前master端口编号，区分多个master端口
   drv_vif_t               drv_vif;
   mon_vif_t               mon_vif;
-  axi_ready_mode_e        bready_mode; //B通道ready产生策略
-  axi_ready_mode_e        rready_mode; //R通道ready产生策略
   int unsigned            max_read_outstanding; //允许同时存在的未完成的读事务数量
   int unsigned            max_write_outstanding;
 
@@ -31,8 +29,6 @@ class axi_m_agent_cfg #(
   )
     `uvm_field_enum(uvm_active_passive_enum, is_active, UVM_DEFAULT)
     `uvm_field_int(port_index, UVM_DEFAULT)
-    `uvm_field_enum(axi_ready_mode_e, bready_mode, UVM_DEFAULT)
-    `uvm_field_enum(axi_ready_mode_e, rready_mode, UVM_DEFAULT)
     `uvm_field_int(max_read_outstanding, UVM_DEFAULT)
     `uvm_field_int(max_write_outstanding, UVM_DEFAULT)
   `uvm_object_utils_end
@@ -43,8 +39,6 @@ class axi_m_agent_cfg #(
     port_index            = 0;
     drv_vif               = null;
     mon_vif               = null;
-    bready_mode           = ALWAYS_READY;
-    rready_mode           = ALWAYS_READY;
     max_read_outstanding  = 1;
     max_write_outstanding = 1;
   endfunction
