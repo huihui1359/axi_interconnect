@@ -53,6 +53,8 @@ module axi_protocol_assertions #(
   bit w_active;
   bit w_complete;
   bit write_wait_b;
+  bit b_response_eligible;
+  bit b_seen_before_aw;
   logic [ID_WIDTH-1:0] observed_awid;
   logic [LEN_WIDTH-1:0] observed_awlen;
   logic [ID_WIDTH-1:0] observed_wid;
@@ -84,6 +86,11 @@ module axi_protocol_assertions #(
       bvalid && !bready |=> bvalid && $stable({bid, bresp});
   endproperty
 
+  property p_b_causality;
+    @(posedge ACLK) disable iff (ARESETn !== 1'b1)
+      bvalid |-> b_response_eligible;
+  endproperty
+
   property p_ar_stable;
     @(posedge ACLK) disable iff (ARESETn !== 1'b1)
       arvalid && !arready |=>
@@ -102,6 +109,8 @@ module axi_protocol_assertions #(
     else report_assertion_error("AXI_ASSERT_W_STABLE");
   assert property (p_b_stable)
     else report_assertion_error("AXI_ASSERT_B_STABLE");
+  assert property (p_b_causality)
+    else report_assertion_error("AXI_ASSERT_B_CAUSALITY");
   assert property (p_ar_stable)
     else report_assertion_error("AXI_ASSERT_AR_STABLE");
   assert property (p_r_stable)
@@ -139,6 +148,8 @@ module axi_protocol_assertions #(
       w_active      = 1'b0;
       w_complete    = 1'b0;
       write_wait_b  = 1'b0;
+      b_response_eligible = 1'b0;
+      b_seen_before_aw    = 1'b0;
       observed_awid = '0;
       observed_awlen = '0;
       observed_wid  = '0;
@@ -172,7 +183,10 @@ module axi_protocol_assertions #(
           w_active     = 1'b0;
           w_complete   = 1'b0;
           w_beat_count = 0;
-          write_wait_b = 1'b1;
+          if (b_seen_before_aw)
+            b_seen_before_aw = 1'b0;
+          else
+            write_wait_b = 1'b1;
         end
         else if (w_active &&
                  (w_beat_count >= (int'(awlen) + 1))) begin
@@ -217,6 +231,7 @@ module axi_protocol_assertions #(
 
         if (wlast) begin
           w_complete = 1'b1;
+          b_response_eligible = 1'b1;
           if (aw_seen) begin
             assert (observed_wid === observed_awid)
               else report_assertion_error("AXI_ASSERT_WID_AWID");
@@ -234,9 +249,11 @@ module axi_protocol_assertions #(
       if (bvalid && bready) begin
         assert (!$isunknown({bid, bresp}))
           else report_assertion_error("AXI_ASSERT_B_PAYLOAD_X");
-        assert (write_wait_b)
-          else report_assertion_error("AXI_ASSERT_B_CAUSALITY");
-        write_wait_b = 1'b0;
+        b_response_eligible = 1'b0;
+        if (write_wait_b)
+          write_wait_b = 1'b0;
+        else
+          b_seen_before_aw = 1'b1;
       end
 
       if (arvalid && arready) begin

@@ -50,6 +50,7 @@ class stage1_e2e_checker #(
   int unsigned ar_match_count;
   int unsigned r_match_count;
   int unsigned mismatch_count;
+  bit enabled;
 
   `uvm_component_param_utils(
     stage1_e2e_checker #(
@@ -83,6 +84,7 @@ function stage1_e2e_checker::new(
   uvm_component parent = null
 );
   super.new(name, parent);
+  enabled = 1'b1;
   clear();
 endfunction
 
@@ -94,6 +96,9 @@ endfunction
 
 function void stage1_e2e_checker::write_upstream(m_event_t event_in);
   m_event_t snapshot;
+
+  if (!enabled)
+    return;
   if ((event_in == null) || !$cast(snapshot, event_in.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE1_E2E", "Failed to clone upstream event")
@@ -112,6 +117,9 @@ endfunction
 
 function void stage1_e2e_checker::write_downstream(s_event_t event_in);
   s_event_t snapshot;
+
+  if (!enabled)
+    return;
   if ((event_in == null) || !$cast(snapshot, event_in.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE1_E2E", "Failed to clone downstream event")
@@ -347,6 +355,9 @@ endfunction
 
 function void stage1_e2e_checker::check_phase(uvm_phase phase);
   super.check_phase(phase);
+  if (!enabled)
+    return;
+
   compare_available();
   if (pending_count() != 0)
     `uvm_error("STAGE1_E2E_PENDING", $sformatf(

@@ -5,8 +5,7 @@ package axi_env_pkg;
 
   import axi_types_pkg::*;
 
-  `uvm_analysis_imp_decl(_expected)
-  `uvm_analysis_imp_decl(_actual)
+  `include "common_defines.svh"
 
   `include "latency_gen.sv"
   `include "axi_req_item.sv"
@@ -23,6 +22,8 @@ package axi_env_pkg;
   `include "slave/axi_s_monitor.sv"
   `include "master/axi_m_agent.sv"
   `include "slave/axi_s_agent.sv"
+  `include "checker/stage1_e2e_checker.sv"
+  `include "checker/stage2_e2e_checker.sv"
   `include "axi_env.sv"
   `include "axi_basic_event_comparator.sv"
 

@@ -80,15 +80,15 @@ Stage 1不得实现以下能力：
 - `dv/env`保留可参数化的item、channel event、cfg、Driver、Monitor、Sequencer、Agent、`axi_env`和基础event comparator。
 - 当前测试环境把`axi_env`特化为一个Master Agent和一个Slave Agent；物理顶层只把这两个Agent连接到DUT的M0和S0。
 - `dv/tb/tb.sv`统一产生10 ns时钟和低有效reset，例化真实`axi_interconnect`，完成接口bridge、cfg传递和`run_test()`调用。
-- `dv/tc`保留`axi_base_test`、`axi_write_test`和`axi_read_test`；Stage 1A独立测试支架在审核完成后已删除。
+- `dv/tc`保留`axi_base_test`、`axi_stage1_single_write_test`和`axi_stage1_single_read_test`；Stage 1A独立测试支架在审核完成后已删除。
 - `sim/Makefile`和`sim/sim.f`是当前唯一的QuestaSim编译仿真入口，生成物存放在`sim/work`。
 
 当前保留的定向事务均为`len=0`的单拍INCR事务：
 
 | Test | 上游请求 | 下游响应 | 端到端检查 |
 |---|---|---|---|
-| `axi_write_test` | ID=`4'h5`，ADDR=`32'h0000_0080`，DATA=`32'hDEAD_BEEF`，STRB=`4'hF` | BID使用扩展ID，BRESP=`OKAY` | AW/W/B各匹配1次 |
-| `axi_read_test` | ID=`4'h5`，ADDR=`32'h0000_0100` | RID使用扩展ID，RDATA=`32'hCAFE_BABE`，RRESP=`OKAY`，RLAST=1 | AR/R各匹配1次 |
+| `axi_stage1_single_write_test` | ID=`4'h5`，ADDR=`32'h0000_0080`，DATA=`32'hDEAD_BEEF`，STRB=`4'hF` | BID使用扩展ID，BRESP=`OKAY` | AW/W/B各匹配1次 |
+| `axi_stage1_single_read_test` | ID=`4'h5`，ADDR=`32'h0000_0100` | RID使用扩展ID，RDATA=`32'hCAFE_BABE`，RRESP=`OKAY`，RLAST=1 | AR/R各匹配1次 |
 
 Stage 0曾使用QuestaSim 10.6c和UVM 1.1d完成独立对象smoke；其一次性测试入口在目录收敛后未保留，因此当前日常审核以Stage 1真实DUT闭环为准。旧`uvm_tb`及其他历史testbench不进入当前`sim.f`。
 
@@ -101,7 +101,7 @@ Stage 0曾使用QuestaSim 10.6c和UVM 1.1d完成独立对象smoke；其一次性
 Stage 1使用同一组正式Driver、Monitor、Sequencer和Agent完成两层验证：Stage 1A中用独立pin-level测试支架验证组件本身，Stage 1B中撤去pin-level对端并连接真实AXI Interconnect DUT。
 
 ```text
-                         axi_write_test / axi_read_test
+            axi_stage1_single_write_test / axi_stage1_single_read_test
                               extends axi_base_test
                                       │
                                 axi_test_env env
@@ -167,7 +167,7 @@ axi_base_test
     └── stage1_e2e_checker
 ```
 
-`tb.sv`只创建物理interface、DUT和`env_cfg`。`axi_base_test`从`uvm_config_db`取得同一个`env_cfg`并创建`axi_test_env`；具体的`axi_write_test`或`axi_read_test`继承base test，只配置并启动本用例所需的Master sequence和Slave reactive sequence。
+`tb.sv`只创建物理interface、DUT和`env_cfg`。`axi_base_test`从`uvm_config_db`取得同一个`env_cfg`并创建`axi_test_env`；具体的`axi_stage1_single_write_test`或`axi_stage1_single_read_test`继承base test，只配置并启动本用例所需的Master sequence和Slave reactive sequence。
 
 ### Stage 1A组件独立测试连接
 
@@ -1194,7 +1194,7 @@ RVALID=0
 
 ### 12.3 Stage 1 reset测试范围
 
-当前保留的`axi_write_test`和`axi_read_test`覆盖仿真启动reset、reset期间无业务event以及reset释放后完成新单拍事务。空闲期间再次reset和VALID stall期间reset曾在Stage 1A一次性unit支架中审核，当前目录收敛后的日常闭环用例未保留这两类场景。
+当前保留的`axi_stage1_single_write_test`和`axi_stage1_single_read_test`覆盖仿真启动reset、reset期间无业务event以及reset释放后完成新单拍事务。空闲期间再次reset和VALID stall期间reset曾在Stage 1A一次性unit支架中审核，当前目录收敛后的日常闭环用例未保留这两类场景。
 
 运行中reset的Checker统一清理、burst中途reset、多outstanding清理、交织候选清理和容量状态恢复留到后续Stage。
 
@@ -1264,8 +1264,8 @@ dv/
 │   │   └── axi_test_env.sv
 │   ├── axi_test_pkg.sv
 │   ├── axi_base_test.sv
-│   ├── axi_write_test.sv
-│   └── axi_read_test.sv
+│   ├── axi_stage1_single_write_test.sv
+│   └── axi_stage1_single_read_test.sv
 ├── tb/
 │   ├── axi_if.sv
 │   └── tb.sv
@@ -1356,13 +1356,13 @@ Stage 1总体编译顺序为：
 make clean
 make clean_all
 make com
-make sim test=axi_write_test SEED=1
-make all test=axi_read_test dump=y SEED=1
-make debug test=axi_write_test dump=y SEED=1
-make wave test=axi_write_test
-make all test=axi_read_test cov=y SEED=1
-make cov_report test=axi_read_test
-make regress test=axi_write_test reg_times=20
+make sim test=axi_stage1_single_write_test SEED=1
+make all test=axi_stage1_single_read_test dump=y SEED=1
+make debug test=axi_stage1_single_write_test dump=y SEED=1
+make wave test=axi_stage1_single_write_test
+make all test=axi_stage1_single_read_test cov=y SEED=1
+make cov_report test=axi_stage1_single_read_test
+make regress test=axi_stage1_single_write_test reg_times=20
 ```
 
 当前行为：
@@ -1608,14 +1608,14 @@ Stage 1A已经完成组件级验收，Stage 1B已经完成DUT单端口闭环验�
 | 实施日期 | Stage 1A：2026-09-13；Stage 1B：2026-09-14；当前结构与运行复核：2026-09-15 |
 | 工具版本 | QuestaSim 10.6c，UVM 1.1d |
 | 当前编译命令 | 在`sim/`执行`make clean`后执行`make com`；Questa使用`sim.f`和本地`work/modelsim.ini` |
-| 当前仿真命令 | `make sim test=axi_write_test dump=y SEED=1`；`make sim test=axi_read_test dump=y SEED=1` |
+| 当前仿真命令 | `make sim test=axi_stage1_single_write_test dump=y SEED=1`；`make sim test=axi_stage1_single_read_test dump=y SEED=1` |
 | 当前覆盖率命令 | `make all test=<test> cov=y SEED=1`，随后执行`make cov_report test=<test>` |
 | Stage 0结果 | 历史审核：`stage0_smoke_test`通过，最终`UVM_ERROR=0`、`UVM_FATAL=0`；目录收敛后一次性入口未保留 |
 | Stage 1A编译 | 历史审核：Errors 0，Warnings 0 |
 | Stage 1A结果 | 历史审核：7个独立UVM test全部通过；其测试支架现已删除，当前不能直接重跑 |
 | 当前Stage 1编译 | 2026-09-15使用QuestaSim 10.6c重新编译统一`tb`、RTL、env、sequence、checker和test package：Errors 0，Warnings 0 |
-| 当前写闭环 | `axi_write_test`通过；AW/W/B各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_write_test.wlf` |
-| 当前读闭环 | `axi_read_test`通过；AR/R各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_read_test.wlf` |
+| 当前写闭环 | `axi_stage1_single_write_test`通过；AW/W/B各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_stage1_single_write_test.wlf` |
+| 当前读闭环 | `axi_stage1_single_read_test`通过；AR/R各匹配1次，`AXI_TC_PASS`，`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`，生成`work/wave/axi_stage1_single_read_test.wlf` |
 | 代码覆盖率入口 | 已审核可生成`work/cov/<test>.ucdb`和`work/cov/<test>_report/index.html`；不等同于functional coverage |
 | DUT使用情况 | Stage 1A不例化DUT；Stage 1B例化真实`axi_interconnect`并只启用M0和S0 |
 | 保留项 | `S0-OPEN-01`继续保留；`S1-LIMIT-01`仅在Stage 1B定向写smoke中使用 |
@@ -1633,5 +1633,5 @@ Stage 1A审核时通过、目录收敛后已删除测试支架的独立测试为
 
 当前保留的Stage 1B闭环测试为：
 
-1. `axi_write_test`。
-2. `axi_read_test`。
+1. `axi_stage1_single_write_test`。
+2. `axi_stage1_single_read_test`。

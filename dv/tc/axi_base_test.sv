@@ -3,8 +3,8 @@
 
 class axi_base_test extends uvm_test;
 
-  env_cfg_t env_cfg;
-  axi_test_env env;
+  axi_env_cfg env_cfg;
+  axi_env env;
 
   `uvm_component_utils(axi_base_test)
 
@@ -12,7 +12,7 @@ class axi_base_test extends uvm_test;
                       uvm_component parent = null);
   extern virtual function void build_phase(uvm_phase phase);
   extern task wait_for_reset_release();
-  extern task finish_test(string test_name);
+  extern task finish_test(string test_name, bit check_stage1 = 1'b1);
 
 endclass
 
@@ -25,11 +25,11 @@ endfunction
 
 function void axi_base_test::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  if (!uvm_config_db#(env_cfg_t)::get(this, "", "env_cfg", env_cfg))
+  if (!uvm_config_db#(axi_env_cfg)::get(this, "", "env_cfg", env_cfg))
     `uvm_fatal("AXI_TEST_CFG", "env_cfg was not provided")
 
-  uvm_config_db#(env_cfg_t)::set(this, "env", "cfg", env_cfg);
-  env = axi_test_env::type_id::create("env", this);
+  uvm_config_db#(axi_env_cfg)::set(this, "env", "cfg", env_cfg);
+  env = axi_env #()::type_id::create("env", this);
 endfunction
 
 task axi_base_test::wait_for_reset_release();
@@ -38,14 +38,16 @@ task axi_base_test::wait_for_reset_release();
   @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
 endtask
 
-task axi_base_test::finish_test(string test_name);
+task axi_base_test::finish_test(string test_name, bit check_stage1 = 1'b1);
   int error_count;
   repeat (2) @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
 
-  if (env.e2e_checker.mismatch_count != 0)
-    `uvm_error("AXI_TEST_CHECK", "End-to-end checker reported a mismatch")
-  if (env.e2e_checker.pending_count() != 0)
-    `uvm_error("AXI_TEST_CHECK", "End-to-end checker has pending events")
+  if (check_stage1) begin
+    if (env.stage1_checker.mismatch_count != 0)
+      `uvm_error("AXI_TEST_CHECK", "End-to-end checker reported a mismatch")
+    if (env.stage1_checker.pending_count() != 0)
+      `uvm_error("AXI_TEST_CHECK", "End-to-end checker has pending events")
+  end
   if (env.stage2_checker.mismatch_count != 0)
     `uvm_error("AXI_TEST_CHECK", "Stage 2 checker reported a mismatch")
   if (env.stage2_checker.pending_count() != 0)

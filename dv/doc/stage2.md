@@ -1,6 +1,6 @@
 # AXI3 Interconnect UVM验证环境Stage 2执行工单
 
-> 状态：待实施、待审核、待冻结  
+> 状态：Stage 2A/2B已实施、待审核冻结
 > 前置条件：`dv/doc/stage1.md`已经审核冻结，当前M0到S0单端口、单笔、单拍DUT闭环可以独立编译和运行  
 > 代码风格：本阶段所有新增和修改代码必须遵守`dv/doc/code_style.md`
 
@@ -17,7 +17,7 @@ Stage 1已经完成验证环境基础组件和最小DUT闭环：
 - Slave Monitor能够从真实AW/W或AR握手重建单拍request，并通过reactive sequence产生响应。
 - `stage1_e2e_checker`能够检查M0到S0的单拍转发、4-bit/8-bit ID变换和响应返回。
 - `dv/tb/tb.sv`已经例化真实AXI Interconnect DUT，只启用M0和S0，其余物理端口确定性置为空闲。
-- `axi_write_test`和`axi_read_test`已经在QuestaSim 10.6c下通过。
+- `axi_stage1_single_write_test`和`axi_stage1_single_read_test`已经在QuestaSim 10.6c下通过。
 
 Stage 1当前只支持单拍、零delay/gap和持续READY，尚未实现多拍burst、可运行的事务时序、通道backpressure、完整response重建和常驻协议断言。
 
@@ -748,10 +748,11 @@ Slave Driver seq_item_port
 
 `stage2_e2e_checker`是M0到S0单端口Stage 2专用Checker，用于检查真实DUT两侧的数据流、ID变换、完整burst和响应因果关系。它不是最终三主三从Scoreboard，也不取代协议断言。
 
-建议保留`stage1_e2e_checker`用于Stage 1回归，新增文件放在：
+保留`stage1_e2e_checker`用于Stage 1回归，Stage 1/Stage 2 checker统一放在：
 
 ```text
-dv/tc/support/stage2_e2e_checker.sv
+dv/env/checker/stage1_e2e_checker.sv
+dv/env/checker/stage2_e2e_checker.sv
 ```
 
 ### 15.2 输入端口
@@ -930,12 +931,79 @@ s_if ── axi_protocol_assertions(8-bit ID)
 
 - 可复用Driver、Monitor、Agent和断言放在`dv/env`。
 - sequence放在`dv/seq`。
-- `stage2_e2e_checker`和Stage 2B测试放在`dv/tc`。
+- `stage1_e2e_checker`和`stage2_e2e_checker`放在`dv/env/checker`，由唯一的`axi_env`例化并连接。
+- Stage 2B场景sequence放在`dv/seq`，`dv/tc`中的对应test只负责配置、启动sequence和检查结果。
 - 每个具体testcase单独一个文件。
 - `axi_base_test`只负责公共env、reset等待和结果汇总。
 - `sim/sim.f`保持公共类型、interface、package、RTL、断言和tb的正确编译顺序。
 - 所有新增方法遵循类内`extern`声明、同文件类外实现的风格。
 - 不增加当前Stage不需要的重复状态、防御性检查或集中式request合法性函数。
+
+### 16.3 实施后的项目目录
+
+```text
+dv/
+├── common/
+│   ├── axi_types_pkg.sv
+│   ├── common_defines.svh
+│   ├── common_typedef.svh
+│   └── latency_gen.sv
+├── env/
+│   ├── checker/
+│   │   ├── stage1_e2e_checker.sv
+│   │   └── stage2_e2e_checker.sv
+│   ├── master/
+│   │   ├── axi_m_agent.sv
+│   │   ├── axi_m_agent_cfg.sv
+│   │   ├── axi_m_driver.sv
+│   │   ├── axi_m_monitor.sv
+│   │   └── axi_m_sequencer.sv
+│   ├── slave/
+│   │   ├── axi_s_agent.sv
+│   │   ├── axi_s_agent_cfg.sv
+│   │   ├── axi_s_driver.sv
+│   │   ├── axi_s_monitor.sv
+│   │   └── axi_s_sequencer.sv
+│   ├── axi_channel_event.sv
+│   ├── axi_env.sv
+│   ├── axi_env_cfg.sv
+│   ├── axi_env_pkg.sv
+│   ├── axi_protocol_assertions.sv
+│   ├── axi_req_item.sv
+│   └── axi_rsp_item.sv
+├── seq/
+│   ├── axi_m_single_read_seq.sv
+│   ├── axi_m_single_write_seq.sv
+│   ├── axi_s_single_reactive_seq.sv
+│   ├── axi_stage2_scenario_seq.sv
+│   ├── axi_stage2_burst_write_seq.sv
+│   ├── axi_stage2_burst_read_seq.sv
+│   ├── axi_stage2_aw_w_order_seq.sv
+│   ├── axi_stage2_delay_gap_seq.sv
+│   ├── axi_stage2_channel_stall_seq.sv
+│   ├── axi_stage2_read_write_parallel_seq.sv
+│   ├── axi_stage2_ready_random_smoke_seq.sv
+│   └── axi_seq_pkg.sv
+├── tc/
+│   ├── axi_base_test.sv
+│   ├── axi_stage2_base_test.sv
+│   ├── axi_stage1_single_write_test.sv
+│   ├── axi_stage1_single_read_test.sv
+│   ├── axi_stage2_burst_write_test.sv
+│   ├── axi_stage2_burst_read_test.sv
+│   ├── axi_stage2_aw_w_order_test.sv
+│   ├── axi_stage2_delay_gap_test.sv
+│   ├── axi_stage2_channel_stall_test.sv
+│   ├── axi_stage2_read_write_parallel_test.sv
+│   ├── axi_stage2_ready_random_smoke_test.sv
+│   └── axi_test_pkg.sv
+└── tb/
+    ├── axi_if.sv
+    ├── axi_protocol_assertions_selftest.sv
+    └── tb.sv
+```
+
+项目中只存在一个`axi_env`。`axi_base_test`直接例化该env，所有TLM连接统一在`axi_env::connect_phase`完成；不再保留`axi_test_env`或`dv/tc/support`层。
 
 # 第四部分：Stage 2验证和验收
 
@@ -1050,20 +1118,20 @@ WREADY和RREADY还必须在第一拍、中间拍和最后一拍分别制造stall
 建议至少建立以下独立testcase：
 
 ```text
-axi_burst_write_test
-axi_burst_read_test
-axi_aw_w_order_test
-axi_delay_gap_test
-axi_channel_stall_test
-axi_read_write_parallel_test
-axi_ready_random_smoke_test
+axi_stage2_burst_write_test
+axi_stage2_burst_read_test
+axi_stage2_aw_w_order_test
+axi_stage2_delay_gap_test
+axi_stage2_channel_stall_test
+axi_stage2_read_write_parallel_test
+axi_stage2_ready_random_smoke_test
 ```
 
 并继续回归：
 
 ```text
-axi_write_test
-axi_read_test
+axi_stage1_single_write_test
+axi_stage1_single_read_test
 ```
 
 每个testcase只配置本场景数据、generator约束、启动sequence并等待统一结果汇总，不在一个文件中堆积所有测试实现。
@@ -1091,7 +1159,10 @@ Stage 2沿用当前QuestaSim入口：
 ```text
 cd sim
 make com
-make sim TESTNAME=<testname>
+make sim test=<testname>
+make stage2_regress
+make positive_regress
+make assertion_selftest
 ```
 
 如果Makefile当前使用其他变量名指定testname，以实际脚本为准，但不得新增第二套仿真目录或重复文件列表。
@@ -1119,17 +1190,27 @@ Stage 2B需要提供能够连续运行全部Stage 1和Stage 2正向测试的回�
 
 | 审核项 | 当前状态 | 说明 |
 |---|---|---|
-| Stage 2范围 | 已确认、待实施 | M0到S0的burst、delay/gap和五通道backpressure |
-| Stage 2A/2B划分 | 已确认、待实施 | 2A只完成代码和编译审核，2B集中测试 |
-| Burst范围 | 已确认、待实施 | FIXED/INCR 1～16拍，WRAP 2/4/8/16拍 |
-| Delay生成 | 已确认、待实施 | 各调用位置独立`latency_gen`，每次调用前随机化 |
-| READY策略 | 已确认、待实施 | 删除READY mode；五个task分别执行“拉低、随机等待、拉高并等待VALID”的循环 |
-| 协议检查 | 已确认、待实施 | 使用专门断言，不在Checker重复实现 |
-| Monitor输出 | 已确认、待实施 | 两侧均发布channel event及完整request/response |
-| Stage 2 Checker | 已确认、待实施 | 同时检查每拍event、完整burst和结束状态 |
-| Reset范围 | 已确认、待实施 | 只覆盖启动reset，复杂运行时reset留后续Stage |
+| Stage 2范围 | 已实施 | M0到S0的burst、delay/gap和五通道backpressure |
+| Stage 2A/2B划分 | 已实施 | 2A完成组件，2B sequence和test分层实现 |
+| Burst范围 | 已通过 | FIXED/INCR 1～16拍，WRAP 2/4/8/16拍 |
+| Delay生成 | 已通过 | 独立`latency_gen`；W/R非均匀gap定向检查通过 |
+| READY策略 | 已通过 | 零延迟、固定延迟、五通道长stall和0～100随机delay通过 |
+| 协议检查 | 已通过 | 正向回归零非预期失败；负向断言自测独立通过 |
+| Monitor输出 | 已通过 | 两侧channel event及完整request/response由checker闭环匹配 |
+| Stage 2 Checker | 已通过 | 每拍event、完整burst、计数和结束pending状态全部通过 |
+| Reset范围 | 已实施 | 只覆盖启动reset，复杂运行时reset留后续Stage |
 | `S0-OPEN-01` | 继续保留 | Stage 2不向Master sequence返回独立response |
 | `S1-LIMIT-01` | 继续保留 | M0到S0写闭环使用ID 4'h5，不污染通用约束和Driver |
-| 代码与仿真结果 | 待实施 | 完成Stage 2A/2B后补充实际文件和运行记录 |
+| 代码与仿真结果 | 已通过 | QuestaSim 10.6c编译、9项正向回归和断言自测通过 |
 
-Stage 2实施完成后，必须在本节补充实际修改文件、Questa版本、编译命令、测试列表、PASS/FAIL结果、日志路径、波形路径和遗留问题，再进行最终冻结。
+### 27.1 实际运行记录
+
+- 工具：QuestaSim 10.6c，UVM 1.1d。
+- 编译：`cd sim && make com`，结果为0 error、0 warning。
+- 正向回归：`make positive_regress`，Stage 1两个单拍用例及Stage 2七个用例全部PASS，每项均为`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`。
+- 断言自测：`make assertion_selftest`，预期断言触发全部命中，未出现非预期断言，打印`AXI_ASSERT_SELFTEST_PASS`。
+- 日志：`sim/work/log/<testname>.log`和`sim/work/log/axi_protocol_assertions_selftest.log`。
+- 波形：`sim/work/wave/<testname>.wlf`。
+- RTL：本次实施未修改`rtl`目录。
+
+严格AXI3的B响应因果检查只以最后一个W beat完成握手作为`BVALID`资格条件，不把AW握手作为强制前提；断言自测同时覆盖W先于AW完成后发送B响应的合法场景。

@@ -19,7 +19,7 @@ FILELIST ?= sim.f
 dump      ?= n
 cov       ?= n
 rand      ?= n
-test      ?= axi_write_test
+test      ?= axi_stage1_single_write_test
 reg_times ?= 20
 
 # Questa 10.6c interprets an environment variable named "dump" as an
@@ -82,7 +82,7 @@ RUN_CMD = $(WAVE_CMD) $(COV_SAVE_CMD) run -all; quit -code 0
 # Targets
 #============================================================
 .PHONY: all prepare com compile sim run debug wave verdi cov_report urg \
-	clean clean_all regress
+	clean clean_all regress stage2_regress positive_regress assertion_selftest
 
 all: clean com sim
 
@@ -135,3 +135,16 @@ clean_all:
 # Repeat the selected test with independent random seeds.
 regress: com
 	powershell -NoProfile -Command "for ($$index = 1; $$index -le $(reg_times); $$index++) { $$reg_seed = Get-Random -Minimum 1 -Maximum 2147483647; & '$(MAKE)' sim test='$(test)' SEED=$$reg_seed dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+
+stage2_regress: com
+	powershell -NoProfile -Command "$$tests = @('axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+
+positive_regress: com
+	powershell -NoProfile -Command "$$tests = @('axi_stage1_single_write_test','axi_stage1_single_read_test','axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+
+assertion_selftest: com
+	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \
+		work.axi_protocol_assertions_selftest $(UVM_OPTION) \
+		-l $(LOG_DIR)/axi_protocol_assertions_selftest.log \
+		-do "run -all; quit -code 0"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(LOG_DIR)/axi_protocol_assertions_selftest.log'; if ($$text -notmatch 'AXI_ASSERT_SELFTEST_PASS') { exit 1 }"

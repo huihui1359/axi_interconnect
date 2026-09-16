@@ -7,8 +7,8 @@ class axi_env_cfg #(
   int unsigned M_ID_WIDTH  = AXI_M_ID_WIDTH,
   int unsigned S_ID_WIDTH  = AXI_S_ID_WIDTH,
   int unsigned LEN_WIDTH   = AXI_LEN_WIDTH,
-  int unsigned NUM_MASTERS = AXI_NUM_MASTERS,
-  int unsigned NUM_SLAVES  = AXI_NUM_SLAVES
+  int unsigned NUM_MASTERS = AXI_ENV_NUM_MASTERS,
+  int unsigned NUM_SLAVES  = AXI_ENV_NUM_SLAVES
 ) extends uvm_object;
 
   typedef axi_m_agent_cfg #(

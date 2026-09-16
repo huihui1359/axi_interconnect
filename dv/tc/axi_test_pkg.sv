@@ -7,59 +7,16 @@ package axi_test_pkg;
   import axi_env_pkg::*;
   import axi_seq_pkg::*;
 
-  `uvm_analysis_imp_decl(_upstream)
-  `uvm_analysis_imp_decl(_downstream)
-  `uvm_analysis_imp_decl(_upstream_channel)
-  `uvm_analysis_imp_decl(_downstream_channel)
-  `uvm_analysis_imp_decl(_upstream_req)
-  `uvm_analysis_imp_decl(_downstream_req)
-  `uvm_analysis_imp_decl(_upstream_rsp)
-  `uvm_analysis_imp_decl(_downstream_rsp)
-  `include "support/stage1_e2e_checker.sv"
-  `include "support/stage2_e2e_checker.sv"
-
-  typedef virtual axi_if #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
-  ).m_drv_mp m_drv_vif_t;
-  typedef virtual axi_if #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
-  ).mon_mp m_mon_vif_t;
-  typedef virtual axi_if #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
-  ).s_drv_mp s_drv_vif_t;
-  typedef virtual axi_if #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
-  ).mon_mp s_mon_vif_t;
-
-  typedef axi_env_cfg #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
-    AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH, 1, 1
-  ) env_cfg_t;
-  typedef axi_env #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
-    AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH, 1, 1
-  ) env_t;
-  typedef axi_m_single_write_seq #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
-  ) m_write_seq_t;
-  typedef axi_m_single_read_seq #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
-  ) m_read_seq_t;
-  typedef axi_s_reactive_seq #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
-  ) s_reactive_seq_t;
-  typedef stage1_e2e_checker #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
-    AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
-  ) e2e_checker_t;
-  typedef stage2_e2e_checker #(
-    AXI_ADDR_WIDTH, AXI_DATA_WIDTH,
-    AXI_M_ID_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
-  ) stage2_e2e_checker_t;
-
-  `include "support/axi_test_env.sv"
   `include "axi_base_test.sv"
-  `include "axi_write_test.sv"
-  `include "axi_read_test.sv"
+  `include "axi_stage2_base_test.sv"
+  `include "axi_stage1_single_write_test.sv"
+  `include "axi_stage1_single_read_test.sv"
+  `include "axi_stage2_burst_write_test.sv"
+  `include "axi_stage2_burst_read_test.sv"
+  `include "axi_stage2_aw_w_order_test.sv"
+  `include "axi_stage2_delay_gap_test.sv"
+  `include "axi_stage2_channel_stall_test.sv"
+  `include "axi_stage2_read_write_parallel_test.sv"
+  `include "axi_stage2_ready_random_smoke_test.sv"
 
 endpackage

@@ -10,7 +10,7 @@ module tb;
 
   logic clk;
   logic rst_n;
-  env_cfg_t env_cfg;
+  axi_env_cfg env_cfg;
 
   initial begin
     clk = 1'b0;
@@ -90,75 +90,75 @@ module tb;
     .rlast(s_if.rlast), .rvalid(s_if.rvalid), .rready(s_if.rready)
   );
 
-  wire [AXI_M_ID_WIDTH-1:0] M_AXI_AWID[0:2];
-  wire [AXI_ADDR_WIDTH-1:0] M_AXI_AWADDR[0:2];
-  wire [AXI_LEN_WIDTH-1:0] M_AXI_AWLEN[0:2];
-  wire [2:0] M_AXI_AWSIZE[0:2];
-  wire [1:0] M_AXI_AWBURST[0:2];
-  wire M_AXI_AWVALID[0:2];
-  wire M_AXI_AWREADY[0:2];
+  wire [AXI_M_ID_WIDTH-1:0] M_AXI_AWID[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_ADDR_WIDTH-1:0] M_AXI_AWADDR[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_LEN_WIDTH-1:0] M_AXI_AWLEN[0:AXI_DUT_NUM_MASTERS-1];
+  wire [2:0] M_AXI_AWSIZE[0:AXI_DUT_NUM_MASTERS-1];
+  wire [1:0] M_AXI_AWBURST[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_AWVALID[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_AWREADY[0:AXI_DUT_NUM_MASTERS-1];
 
-  wire [AXI_M_ID_WIDTH-1:0] M_AXI_WID[0:2];
-  wire [AXI_DATA_WIDTH-1:0] M_AXI_WDATA[0:2];
-  wire [(AXI_DATA_WIDTH/8)-1:0] M_AXI_WSTRB[0:2];
-  wire M_AXI_WLAST[0:2];
-  wire M_AXI_WVALID[0:2];
-  wire M_AXI_WREADY[0:2];
+  wire [AXI_M_ID_WIDTH-1:0] M_AXI_WID[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_DATA_WIDTH-1:0] M_AXI_WDATA[0:AXI_DUT_NUM_MASTERS-1];
+  wire [(AXI_DATA_WIDTH/8)-1:0] M_AXI_WSTRB[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_WLAST[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_WVALID[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_WREADY[0:AXI_DUT_NUM_MASTERS-1];
 
-  wire [AXI_M_ID_WIDTH-1:0] M_AXI_BID[0:2];
-  wire [1:0] M_AXI_BRESP[0:2];
-  wire M_AXI_BVALID[0:2];
-  wire M_AXI_BREADY[0:2];
+  wire [AXI_M_ID_WIDTH-1:0] M_AXI_BID[0:AXI_DUT_NUM_MASTERS-1];
+  wire [1:0] M_AXI_BRESP[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_BVALID[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_BREADY[0:AXI_DUT_NUM_MASTERS-1];
 
-  wire [AXI_M_ID_WIDTH-1:0] M_AXI_ARID[0:2];
-  wire [AXI_ADDR_WIDTH-1:0] M_AXI_ARADDR[0:2];
-  wire [AXI_LEN_WIDTH-1:0] M_AXI_ARLEN[0:2];
-  wire [2:0] M_AXI_ARSIZE[0:2];
-  wire [1:0] M_AXI_ARBURST[0:2];
-  wire M_AXI_ARVALID[0:2];
-  wire M_AXI_ARREADY[0:2];
+  wire [AXI_M_ID_WIDTH-1:0] M_AXI_ARID[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_ADDR_WIDTH-1:0] M_AXI_ARADDR[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_LEN_WIDTH-1:0] M_AXI_ARLEN[0:AXI_DUT_NUM_MASTERS-1];
+  wire [2:0] M_AXI_ARSIZE[0:AXI_DUT_NUM_MASTERS-1];
+  wire [1:0] M_AXI_ARBURST[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_ARVALID[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_ARREADY[0:AXI_DUT_NUM_MASTERS-1];
 
-  wire [AXI_M_ID_WIDTH-1:0] M_AXI_RID[0:2];
-  wire [AXI_DATA_WIDTH-1:0] M_AXI_RDATA[0:2];
-  wire [1:0] M_AXI_RRESP[0:2];
-  wire M_AXI_RLAST[0:2];
-  wire M_AXI_RVALID[0:2];
-  wire M_AXI_RREADY[0:2];
+  wire [AXI_M_ID_WIDTH-1:0] M_AXI_RID[0:AXI_DUT_NUM_MASTERS-1];
+  wire [AXI_DATA_WIDTH-1:0] M_AXI_RDATA[0:AXI_DUT_NUM_MASTERS-1];
+  wire [1:0] M_AXI_RRESP[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_RLAST[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_RVALID[0:AXI_DUT_NUM_MASTERS-1];
+  wire M_AXI_RREADY[0:AXI_DUT_NUM_MASTERS-1];
 
-  wire [AXI_S_ID_WIDTH-1:0] S_AXI_AWID[0:2];
-  wire [AXI_ADDR_WIDTH-1:0] S_AXI_AWADDR[0:2];
-  wire [AXI_LEN_WIDTH-1:0] S_AXI_AWLEN[0:2];
-  wire [2:0] S_AXI_AWSIZE[0:2];
-  wire [1:0] S_AXI_AWBURST[0:2];
-  wire S_AXI_AWVALID[0:2];
-  wire S_AXI_AWREADY[0:2];
+  wire [AXI_S_ID_WIDTH-1:0] S_AXI_AWID[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_ADDR_WIDTH-1:0] S_AXI_AWADDR[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_LEN_WIDTH-1:0] S_AXI_AWLEN[0:AXI_DUT_NUM_SLAVES-1];
+  wire [2:0] S_AXI_AWSIZE[0:AXI_DUT_NUM_SLAVES-1];
+  wire [1:0] S_AXI_AWBURST[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_AWVALID[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_AWREADY[0:AXI_DUT_NUM_SLAVES-1];
 
-  wire [AXI_S_ID_WIDTH-1:0] S_AXI_WID[0:2];
-  wire [AXI_DATA_WIDTH-1:0] S_AXI_WDATA[0:2];
-  wire [(AXI_DATA_WIDTH/8)-1:0] S_AXI_WSTRB[0:2];
-  wire S_AXI_WLAST[0:2];
-  wire S_AXI_WVALID[0:2];
-  wire S_AXI_WREADY[0:2];
+  wire [AXI_S_ID_WIDTH-1:0] S_AXI_WID[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_DATA_WIDTH-1:0] S_AXI_WDATA[0:AXI_DUT_NUM_SLAVES-1];
+  wire [(AXI_DATA_WIDTH/8)-1:0] S_AXI_WSTRB[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_WLAST[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_WVALID[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_WREADY[0:AXI_DUT_NUM_SLAVES-1];
 
-  wire [AXI_S_ID_WIDTH-1:0] S_AXI_BID[0:2];
-  wire [1:0] S_AXI_BRESP[0:2];
-  wire S_AXI_BVALID[0:2];
-  wire S_AXI_BREADY[0:2];
+  wire [AXI_S_ID_WIDTH-1:0] S_AXI_BID[0:AXI_DUT_NUM_SLAVES-1];
+  wire [1:0] S_AXI_BRESP[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_BVALID[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_BREADY[0:AXI_DUT_NUM_SLAVES-1];
 
-  wire [AXI_S_ID_WIDTH-1:0] S_AXI_ARID[0:2];
-  wire [AXI_ADDR_WIDTH-1:0] S_AXI_ARADDR[0:2];
-  wire [AXI_LEN_WIDTH-1:0] S_AXI_ARLEN[0:2];
-  wire [2:0] S_AXI_ARSIZE[0:2];
-  wire [1:0] S_AXI_ARBURST[0:2];
-  wire S_AXI_ARVALID[0:2];
-  wire S_AXI_ARREADY[0:2];
+  wire [AXI_S_ID_WIDTH-1:0] S_AXI_ARID[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_ADDR_WIDTH-1:0] S_AXI_ARADDR[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_LEN_WIDTH-1:0] S_AXI_ARLEN[0:AXI_DUT_NUM_SLAVES-1];
+  wire [2:0] S_AXI_ARSIZE[0:AXI_DUT_NUM_SLAVES-1];
+  wire [1:0] S_AXI_ARBURST[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_ARVALID[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_ARREADY[0:AXI_DUT_NUM_SLAVES-1];
 
-  wire [AXI_S_ID_WIDTH-1:0] S_AXI_RID[0:2];
-  wire [AXI_DATA_WIDTH-1:0] S_AXI_RDATA[0:2];
-  wire [1:0] S_AXI_RRESP[0:2];
-  wire S_AXI_RLAST[0:2];
-  wire S_AXI_RVALID[0:2];
-  wire S_AXI_RREADY[0:2];
+  wire [AXI_S_ID_WIDTH-1:0] S_AXI_RID[0:AXI_DUT_NUM_SLAVES-1];
+  wire [AXI_DATA_WIDTH-1:0] S_AXI_RDATA[0:AXI_DUT_NUM_SLAVES-1];
+  wire [1:0] S_AXI_RRESP[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_RLAST[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_RVALID[0:AXI_DUT_NUM_SLAVES-1];
+  wire S_AXI_RREADY[0:AXI_DUT_NUM_SLAVES-1];
 
   assign M_AXI_AWID[0]    = m_if.awid;
   assign M_AXI_AWADDR[0]  = m_if.awaddr;
@@ -231,8 +231,9 @@ module tb;
   assign s_if.rready     = S_AXI_RREADY[0];
 
   generate
-    //将未启用的 [1]、[2] 端口确定性置为空闲状态
-    for (genvar index = 1; index < 3; index++) begin : inactive_ports
+    for (genvar index = 1;
+         index < AXI_DUT_NUM_MASTERS;
+         index++) begin : inactive_master_ports
       assign M_AXI_AWID[index]    = '0;
       assign M_AXI_AWADDR[index]  = '0;
       assign M_AXI_AWLEN[index]   = '0;
@@ -252,7 +253,11 @@ module tb;
       assign M_AXI_ARBURST[index] = '0;
       assign M_AXI_ARVALID[index] = 1'b0;
       assign M_AXI_RREADY[index]  = 1'b0;
+    end
 
+    for (genvar index = 1;
+         index < AXI_DUT_NUM_SLAVES;
+         index++) begin : inactive_slave_ports
       assign S_AXI_AWREADY[index] = 1'b0;
       assign S_AXI_WREADY[index]  = 1'b0;
       assign S_AXI_BID[index]     = '0;
@@ -340,7 +345,7 @@ module tb;
   );
 
   initial begin
-    env_cfg = env_cfg_t::type_id::create("env_cfg");
+    env_cfg = axi_env_cfg #()::type_id::create("env_cfg");
     env_cfg.m_cfg[0].is_active = UVM_ACTIVE;
     env_cfg.m_cfg[0].drv_vif   = m_if;
     env_cfg.m_cfg[0].mon_vif   = m_if;
@@ -348,10 +353,10 @@ module tb;
     env_cfg.s_cfg[0].drv_vif   = s_if;
     env_cfg.s_cfg[0].mon_vif   = s_if;
 
-    uvm_config_db#(env_cfg_t)::set(
+    uvm_config_db#(axi_env_cfg)::set(
       null, "uvm_test_top", "env_cfg", env_cfg
     );
-    uvm_root::get().set_timeout(5_000_000, 1'b1);
+    uvm_root::get().set_timeout(100_000_000, 1'b1);
     run_test();
   end
 

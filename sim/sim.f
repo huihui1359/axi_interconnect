@@ -23,4 +23,5 @@
 ../rtl/axi_interconnect.v
 
 ../dv/env/axi_protocol_assertions.sv
+../dv/tb/axi_protocol_assertions_selftest.sv
 ../dv/tb/tb.sv
