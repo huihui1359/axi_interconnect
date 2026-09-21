@@ -33,12 +33,24 @@ class axi_env #(
   typedef stage2_e2e_checker #(
     ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
   ) stage2_checker_t;
+  typedef stage3_e2e_checker #(
+    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
+  ) stage3_checker_t;
+  typedef axi_outstanding_tracker #(
+    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
+  ) m_tracker_t;
+  typedef axi_outstanding_tracker #(
+    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
+  ) s_tracker_t;
 
   cfg_t cfg;
   m_agent_t m_agents[NUM_MASTERS];
   s_agent_t s_agents[NUM_SLAVES];
   stage1_checker_t stage1_checker;
   stage2_checker_t stage2_checker;
+  stage3_checker_t stage3_checker;
+  m_tracker_t upstream_tracker;
+  s_tracker_t downstream_tracker;
 
   `uvm_component_param_utils(
     axi_env #(
@@ -86,6 +98,19 @@ function void axi_env::build_phase(uvm_phase phase);
   stage2_checker = stage2_checker_t::type_id::create(
     "stage2_checker", this
   );
+  stage3_checker = stage3_checker_t::type_id::create(
+    "stage3_checker", this
+  );
+  upstream_tracker = m_tracker_t::type_id::create(
+    "upstream_tracker", this
+  );
+  downstream_tracker = s_tracker_t::type_id::create(
+    "downstream_tracker", this
+  );
+
+  stage1_checker.enabled = (cfg.checker_mode == AXI_CHECKER_STAGE1);
+  stage2_checker.enabled = (cfg.checker_mode == AXI_CHECKER_STAGE2);
+  stage3_checker.enabled = (cfg.checker_mode == AXI_CHECKER_STAGE3);
 endfunction
 
 function void axi_env::connect_phase(uvm_phase phase);
@@ -104,6 +129,20 @@ function void axi_env::connect_phase(uvm_phase phase);
   s_agents[0].monitor.req_ap.connect(stage2_checker.downstream_req_export);
   m_agents[0].monitor.rsp_ap.connect(stage2_checker.upstream_rsp_export);
   s_agents[0].monitor.rsp_ap.connect(stage2_checker.downstream_rsp_export);
+
+  m_agents[0].monitor.channel_ap.connect(
+    stage3_checker.upstream_channel_export
+  );
+  s_agents[0].monitor.channel_ap.connect(
+    stage3_checker.downstream_channel_export
+  );
+  m_agents[0].monitor.req_ap.connect(stage3_checker.upstream_req_export);
+  s_agents[0].monitor.req_ap.connect(stage3_checker.downstream_req_export);
+  m_agents[0].monitor.rsp_ap.connect(stage3_checker.upstream_rsp_export);
+  s_agents[0].monitor.rsp_ap.connect(stage3_checker.downstream_rsp_export);
+
+  m_agents[0].monitor.channel_ap.connect(upstream_tracker.channel_export);
+  s_agents[0].monitor.channel_ap.connect(downstream_tracker.channel_export);
 endfunction
 
 `endif

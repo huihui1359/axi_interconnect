@@ -27,6 +27,20 @@ typedef enum bit [1:0] {
 } axi_region_e;
 
 typedef enum bit [2:0] {
+  AXI_ROUTE_S0      = 3'd1,
+  AXI_ROUTE_S1      = 3'd2,
+  AXI_ROUTE_S2      = 3'd3,
+  AXI_ROUTE_DEFAULT = 3'd4,
+  AXI_ROUTE_INVALID = 3'd7
+} axi_route_e;
+
+typedef enum bit [1:0] {
+  AXI_CHECKER_STAGE1,
+  AXI_CHECKER_STAGE2,
+  AXI_CHECKER_STAGE3
+} axi_checker_mode_e;
+
+typedef enum bit [2:0] {
   AXI_DATA_RANDOM,
   AXI_DATA_ZERO,
   AXI_DATA_ONES,

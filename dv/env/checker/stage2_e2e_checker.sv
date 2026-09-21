@@ -99,6 +99,7 @@ class stage2_e2e_checker #(
   int unsigned expected_w_beat_count;
   int unsigned expected_r_beat_count;
   int unsigned mismatch_count;
+  bit enabled;
 
   `uvm_component_param_utils(
     stage2_e2e_checker #(
@@ -145,6 +146,7 @@ function stage2_e2e_checker::new(
   uvm_component parent = null
 );
   super.new(name, parent);
+  enabled = 1'b1;
   clear();
 endfunction
 
@@ -160,6 +162,8 @@ endfunction
 
 function void stage2_e2e_checker::write_upstream_channel(m_event_t item);
   m_event_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone upstream channel event")
@@ -177,6 +181,8 @@ endfunction
 
 function void stage2_e2e_checker::write_downstream_channel(s_event_t item);
   s_event_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone downstream channel event")
@@ -208,6 +214,8 @@ endfunction
 
 function void stage2_e2e_checker::write_upstream_req(m_req_t item);
   m_req_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone upstream request")
@@ -222,6 +230,8 @@ endfunction
 
 function void stage2_e2e_checker::write_downstream_req(s_req_t item);
   s_req_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone downstream request")
@@ -236,6 +246,8 @@ endfunction
 
 function void stage2_e2e_checker::write_upstream_rsp(m_rsp_t item);
   m_rsp_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone upstream response")
@@ -250,6 +262,8 @@ endfunction
 
 function void stage2_e2e_checker::write_downstream_rsp(s_rsp_t item);
   s_rsp_t snapshot;
+  if (!enabled)
+    return;
   if ((item == null) || !$cast(snapshot, item.clone())) begin
     mismatch_count++;
     `uvm_error("STAGE2_E2E", "Failed to clone downstream response")
@@ -648,6 +662,8 @@ endfunction
 
 function void stage2_e2e_checker::check_phase(uvm_phase phase);
   super.check_phase(phase);
+  if (!enabled)
+    return;
   compare_available();
 
   if (pending_count() != 0)

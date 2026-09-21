@@ -21,6 +21,7 @@ class axi_env_cfg #(
 
   m_agent_cfg_t m_cfg[NUM_MASTERS];
   s_agent_cfg_t s_cfg[NUM_SLAVES];
+  axi_checker_mode_e checker_mode;
 
   `uvm_object_param_utils(
     axi_env_cfg #(
@@ -31,6 +32,7 @@ class axi_env_cfg #(
 
   function new(string name = "axi_env_cfg");
     super.new(name);
+    checker_mode = AXI_CHECKER_STAGE1;
 
     foreach (m_cfg[i]) begin
       m_cfg[i] = m_agent_cfg_t::type_id::create(

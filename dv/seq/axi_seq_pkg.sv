@@ -17,5 +17,15 @@ package axi_seq_pkg;
   `include "axi_stage2_channel_stall_seq.sv"
   `include "axi_stage2_read_write_parallel_seq.sv"
   `include "axi_stage2_ready_random_smoke_seq.sv"
+  `include "axi_s_stage3_reactive_seq.sv"
+  `include "axi_stage3_scenario_seq.sv"
+  `include "axi_stage3_outstanding_write_seq.sv"
+  `include "axi_stage3_outstanding_read_seq.sv"
+  `include "axi_stage3_write_ooo_seq.sv"
+  `include "axi_stage3_read_ooo_seq.sv"
+  `include "axi_stage3_same_id_order_seq.sv"
+  `include "axi_stage3_mixed_rw_seq.sv"
+  `include "axi_stage3_id_mapping_seq.sv"
+  `include "axi_stage3_outstanding_stall_seq.sv"
 
 endpackage

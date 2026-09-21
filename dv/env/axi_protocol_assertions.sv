@@ -4,11 +4,13 @@
 import uvm_pkg::*;
 
 module axi_protocol_assertions #(
-  int unsigned ADDR_WIDTH   = 32,
-  int unsigned DATA_WIDTH   = 32,
-  int unsigned ID_WIDTH     = 4,
-  int unsigned LEN_WIDTH    = 4,
-  bit          TB_IS_MASTER = 1'b1
+  int unsigned ADDR_WIDTH       = 32,
+  int unsigned DATA_WIDTH       = 32,
+  int unsigned ID_WIDTH         = 4,
+  int unsigned LEN_WIDTH        = 4,
+  int unsigned MAX_OUTSTANDING  = 4,
+  bit          TB_IS_MASTER     = 1'b1,
+  bit          STAGE3_CHECKS    = 1'b0
 ) (
   input logic ACLK,
   input logic ARESETn,
@@ -49,24 +51,94 @@ module axi_protocol_assertions #(
   input logic rready
 );
 
-  bit aw_seen;
-  bit w_active;
-  bit w_complete;
-  bit write_wait_b;
-  bit b_response_eligible;
-  bit b_seen_before_aw;
-  logic [ID_WIDTH-1:0] observed_awid;
-  logic [LEN_WIDTH-1:0] observed_awlen;
-  logic [ID_WIDTH-1:0] observed_wid;
-  int unsigned w_beat_count;
+  localparam int unsigned ID_COUNT = 1 << ID_WIDTH;
 
-  bit read_active;
-  logic [ID_WIDTH-1:0] observed_arid;
-  logic [LEN_WIDTH-1:0] observed_arlen;
+  int unsigned aw_outstanding_by_id[ID_COUNT];
+  int unsigned w_outstanding_by_id[ID_COUNT];
+  int unsigned ar_outstanding_by_id[ID_COUNT];
+  int unsigned aw_len_by_id[ID_COUNT][$];
+  int unsigned completed_w_count_by_id[ID_COUNT][$];
+  int unsigned ar_len_by_id[ID_COUNT][$];
+
+  bit w_active;
+  logic [ID_WIDTH-1:0] active_wid;
+  int unsigned w_beat_count;
+  bit r_active;
+  logic [ID_WIDTH-1:0] active_rid;
+  int unsigned active_rlen;
   int unsigned r_beat_count;
+  int unsigned b_eligible_count;
 
   function void report_assertion_error(string report_id);
     uvm_report_error(report_id, "AXI protocol assertion failed");
+  endfunction
+
+  function automatic int unsigned write_outstanding();
+    int unsigned total;
+    total = 0;
+    foreach (aw_outstanding_by_id[id])
+      total += aw_outstanding_by_id[id];
+    return total;
+  endfunction
+
+  function automatic int unsigned read_outstanding();
+    int unsigned total;
+    total = 0;
+    foreach (ar_outstanding_by_id[id])
+      total += ar_outstanding_by_id[id];
+    return total;
+  endfunction
+
+  function automatic bit valid_stage3_id(logic [ID_WIDTH-1:0] id);
+    longint unsigned id_value;
+    if ($isunknown(id))
+      return 1'b0;
+    id_value = longint'(id);
+    if (ID_WIDTH == 4)
+      return ((id_value >> 2) & 2'b11) == 2'b01;
+    if (ID_WIDTH == 8)
+      return (((id_value >> 6) & 2'b11) == 2'b01) &&
+             (((id_value >> 4) & 2'b11) == 2'b01) &&
+             (((id_value >> 2) & 2'b11) == 2'b01);
+    return 1'b1;
+  endfunction
+
+  function automatic bit valid_stage3_master_tag(
+    logic [ID_WIDTH-1:0] id
+  );
+    longint unsigned id_value;
+    if ($isunknown(id))
+      return 1'b0;
+    id_value = longint'(id);
+    if (ID_WIDTH == 8)
+      return ((id_value >> 4) & 2'b11) == 2'b01;
+    return 1'b1;
+  endfunction
+
+  function automatic bit valid_stage3_slave_tag(
+    logic [ID_WIDTH-1:0] id
+  );
+    longint unsigned id_value;
+    if ($isunknown(id))
+      return 1'b0;
+    id_value = longint'(id);
+    if (ID_WIDTH == 8)
+      return (((id_value >> 6) & 2'b11) ==
+              ((id_value >> 2) & 2'b11));
+    return 1'b1;
+  endfunction
+
+  function automatic void pair_write_context(int unsigned id);
+    int unsigned expected_count;
+    int unsigned observed_count;
+    if ((aw_len_by_id[id].size() == 0) ||
+        (completed_w_count_by_id[id].size() == 0))
+      return;
+
+    expected_count = aw_len_by_id[id].pop_front() + 1;
+    observed_count = completed_w_count_by_id[id].pop_front();
+    assert (observed_count == expected_count)
+      else report_assertion_error("AXI_ASSERT_W_COUNT");
   endfunction
 
   property p_aw_stable;
@@ -88,7 +160,8 @@ module axi_protocol_assertions #(
 
   property p_b_causality;
     @(posedge ACLK) disable iff (ARESETn !== 1'b1)
-      bvalid |-> b_response_eligible;
+      bvalid |-> ((b_eligible_count != 0) ||
+                  (wvalid && wready && wlast));
   endproperty
 
   property p_ar_stable;
@@ -138,26 +211,27 @@ module axi_protocol_assertions #(
   endgenerate
 
   always @(posedge ACLK) begin
-    int unsigned current_w_count;
-    int unsigned expected_w_count;
-    int unsigned current_r_count;
-    int unsigned expected_r_count;
+    int unsigned id;
+    int unsigned current_count;
+    int unsigned expected_count;
 
     if (ARESETn !== 1'b1) begin
-      aw_seen       = 1'b0;
-      w_active      = 1'b0;
-      w_complete    = 1'b0;
-      write_wait_b  = 1'b0;
-      b_response_eligible = 1'b0;
-      b_seen_before_aw    = 1'b0;
-      observed_awid = '0;
-      observed_awlen = '0;
-      observed_wid  = '0;
-      w_beat_count  = 0;
-      read_active   = 1'b0;
-      observed_arid = '0;
-      observed_arlen = '0;
-      r_beat_count  = 0;
+      foreach (aw_outstanding_by_id[index]) begin
+        aw_outstanding_by_id[index] = 0;
+        w_outstanding_by_id[index]  = 0;
+        ar_outstanding_by_id[index] = 0;
+        aw_len_by_id[index].delete();
+        completed_w_count_by_id[index].delete();
+        ar_len_by_id[index].delete();
+      end
+      w_active        = 1'b0;
+      active_wid      = '0;
+      w_beat_count    = 0;
+      r_active        = 1'b0;
+      active_rid      = '0;
+      active_rlen     = 0;
+      r_beat_count    = 0;
+      b_eligible_count = 0;
     end
     else begin
       assert (!$isunknown({awvalid, awready, wvalid, wready,
@@ -168,80 +242,85 @@ module axi_protocol_assertions #(
       if (awvalid && awready) begin
         assert (!$isunknown({awid, awaddr, awlen, awsize, awburst}))
           else report_assertion_error("AXI_ASSERT_AW_PAYLOAD_X");
-        assert (!aw_seen && !write_wait_b)
-          else report_assertion_error("AXI_ASSERT_AW_OUTSTANDING");
-        aw_seen        = 1'b1;
-        observed_awid  = awid;
-        observed_awlen = awlen;
-
-        if (w_complete) begin
-          assert (observed_wid === awid)
-            else report_assertion_error("AXI_ASSERT_WID_AWID");
-          assert (w_beat_count == (int'(awlen) + 1))
-            else report_assertion_error("AXI_ASSERT_W_COUNT");
-          aw_seen      = 1'b0;
-          w_active     = 1'b0;
-          w_complete   = 1'b0;
-          w_beat_count = 0;
-          if (b_seen_before_aw)
-            b_seen_before_aw = 1'b0;
-          else
-            write_wait_b = 1'b1;
-        end
-        else if (w_active &&
-                 (w_beat_count >= (int'(awlen) + 1))) begin
-          if (w_beat_count == (int'(awlen) + 1))
-            assert (1'b0)
-              else report_assertion_error("AXI_ASSERT_WLAST_MISSING");
-          else
-            assert (1'b0)
-              else report_assertion_error("AXI_ASSERT_W_COUNT_EXCESS");
+        if (!$isunknown(awid)) begin
+          id = int'(awid);
+          aw_outstanding_by_id[id]++;
+          aw_len_by_id[id].push_back(int'(awlen));
+          pair_write_context(id);
+          if (STAGE3_CHECKS) begin
+            assert (valid_stage3_id(awid))
+              else report_assertion_error("AXI_ASSERT_AW_ID");
+            assert (valid_stage3_master_tag(awid))
+              else report_assertion_error("AXI_ASSERT_AW_MASTER_TAG");
+            assert (valid_stage3_slave_tag(awid))
+              else report_assertion_error("AXI_ASSERT_AW_SLAVE_TAG");
+          end
         end
       end
 
       if (wvalid && wready) begin
         assert (!$isunknown({wid, wdata, wstrb, wlast}))
           else report_assertion_error("AXI_ASSERT_W_PAYLOAD_X");
-        assert (!write_wait_b)
-          else report_assertion_error("AXI_ASSERT_W_OUTSTANDING");
-
-        if (!w_active) begin
-          w_active     = 1'b1;
-          observed_wid = wid;
-        end
-        else begin
-          assert (wid === observed_wid)
-            else report_assertion_error("AXI_ASSERT_WID_STABLE");
-        end
-
-        current_w_count = w_beat_count + 1;
-        w_beat_count    = current_w_count;
-        if (aw_seen) begin
-          expected_w_count = int'(observed_awlen) + 1;
-          if (current_w_count < expected_w_count)
-            assert (!wlast)
-              else report_assertion_error("AXI_ASSERT_WLAST_EARLY");
-          else if (current_w_count == expected_w_count)
-            assert (wlast)
-              else report_assertion_error("AXI_ASSERT_WLAST_MISSING");
-          else
-            assert (1'b0)
-              else report_assertion_error("AXI_ASSERT_W_COUNT_EXCESS");
-        end
-
-        if (wlast) begin
-          w_complete = 1'b1;
-          b_response_eligible = 1'b1;
-          if (aw_seen) begin
-            assert (observed_wid === observed_awid)
-              else report_assertion_error("AXI_ASSERT_WID_AWID");
-            assert (current_w_count == (int'(observed_awlen) + 1))
-              else report_assertion_error("AXI_ASSERT_W_COUNT");
-            aw_seen      = 1'b0;
-            w_active     = 1'b0;
-            w_complete   = 1'b0;
+        if (!$isunknown(wid)) begin
+          id = int'(wid);
+          if (!w_active) begin
+            w_active     = 1'b1;
+            active_wid   = wid;
             w_beat_count = 0;
-            write_wait_b = 1'b1;
+          end
+          else begin
+            assert (wid === active_wid)
+              else report_assertion_error("AXI_ASSERT_WID_STABLE");
+          end
+
+          current_count = w_beat_count + 1;
+          w_beat_count  = current_count;
+          if (aw_len_by_id[id].size() != 0) begin
+            expected_count = aw_len_by_id[id][0] + 1;
+            if (current_count < expected_count)
+              assert (!wlast)
+                else report_assertion_error("AXI_ASSERT_WLAST_EARLY");
+            else if (current_count == expected_count)
+              assert (wlast)
+                else report_assertion_error("AXI_ASSERT_WLAST_MISSING");
+            else
+              assert (1'b0)
+                else report_assertion_error("AXI_ASSERT_W_COUNT_EXCESS");
+          end
+
+          if (wlast) begin
+            completed_w_count_by_id[id].push_back(current_count);
+            w_outstanding_by_id[id]++;
+            b_eligible_count++;
+            pair_write_context(id);
+            w_active     = 1'b0;
+            w_beat_count = 0;
+          end
+          if (STAGE3_CHECKS) begin
+            assert (valid_stage3_id(wid))
+              else report_assertion_error("AXI_ASSERT_W_ID");
+            assert (valid_stage3_master_tag(wid))
+              else report_assertion_error("AXI_ASSERT_W_MASTER_TAG");
+            assert (valid_stage3_slave_tag(wid))
+              else report_assertion_error("AXI_ASSERT_W_SLAVE_TAG");
+          end
+        end
+      end
+
+      if (arvalid && arready) begin
+        assert (!$isunknown({arid, araddr, arlen, arsize, arburst}))
+          else report_assertion_error("AXI_ASSERT_AR_PAYLOAD_X");
+        if (!$isunknown(arid)) begin
+          id = int'(arid);
+          ar_outstanding_by_id[id]++;
+          ar_len_by_id[id].push_back(int'(arlen));
+          if (STAGE3_CHECKS) begin
+            assert (valid_stage3_id(arid))
+              else report_assertion_error("AXI_ASSERT_AR_ID");
+            assert (valid_stage3_master_tag(arid))
+              else report_assertion_error("AXI_ASSERT_AR_MASTER_TAG");
+            assert (valid_stage3_slave_tag(arid))
+              else report_assertion_error("AXI_ASSERT_AR_SLAVE_TAG");
           end
         end
       end
@@ -249,52 +328,99 @@ module axi_protocol_assertions #(
       if (bvalid && bready) begin
         assert (!$isunknown({bid, bresp}))
           else report_assertion_error("AXI_ASSERT_B_PAYLOAD_X");
-        b_response_eligible = 1'b0;
-        if (write_wait_b)
-          write_wait_b = 1'b0;
-        else
-          b_seen_before_aw = 1'b1;
-      end
-
-      if (arvalid && arready) begin
-        assert (!$isunknown({arid, araddr, arlen, arsize, arburst}))
-          else report_assertion_error("AXI_ASSERT_AR_PAYLOAD_X");
-        assert (!read_active)
-          else report_assertion_error("AXI_ASSERT_AR_OUTSTANDING");
-        read_active    = 1'b1;
-        observed_arid  = arid;
-        observed_arlen = arlen;
-        r_beat_count   = 0;
+        if (!$isunknown(bid)) begin
+          id = int'(bid);
+          if (STAGE3_CHECKS) begin
+            assert (valid_stage3_id(bid))
+              else report_assertion_error("AXI_ASSERT_B_ID");
+            assert (valid_stage3_master_tag(bid))
+              else report_assertion_error("AXI_ASSERT_B_MASTER_TAG");
+            assert (valid_stage3_slave_tag(bid))
+              else report_assertion_error("AXI_ASSERT_B_SLAVE_TAG");
+            if ((aw_outstanding_by_id[id] == 0) &&
+                (w_outstanding_by_id[id] == 0)) begin
+              assert (1'b0)
+                else report_assertion_error("AXI_ASSERT_B_NO_PENDING");
+            end
+            else begin
+              assert (aw_outstanding_by_id[id] != 0)
+                else report_assertion_error("AXI_ASSERT_B_AW_UNDERFLOW");
+              assert (w_outstanding_by_id[id] != 0)
+                else report_assertion_error("AXI_ASSERT_B_SAME_ID_ORDER");
+            end
+          end
+          if (aw_outstanding_by_id[id] != 0)
+            aw_outstanding_by_id[id]--;
+          if (w_outstanding_by_id[id] != 0)
+            w_outstanding_by_id[id]--;
+          if (b_eligible_count != 0)
+            b_eligible_count--;
+        end
       end
 
       if (rvalid && rready) begin
         assert (!$isunknown({rid, rdata, rresp, rlast}))
           else report_assertion_error("AXI_ASSERT_R_PAYLOAD_X");
-        assert (read_active)
-          else report_assertion_error("AXI_ASSERT_R_CAUSALITY");
+        if (!$isunknown(rid)) begin
+          id = int'(rid);
+          if (!r_active) begin
+            assert (ar_len_by_id[id].size() != 0)
+              else report_assertion_error("AXI_ASSERT_R_CAUSALITY");
+            if (ar_len_by_id[id].size() != 0) begin
+              r_active     = 1'b1;
+              active_rid   = rid;
+              active_rlen  = ar_len_by_id[id][0];
+              r_beat_count = 0;
+            end
+          end
+          else begin
+            assert (rid === active_rid)
+              else report_assertion_error("AXI_ASSERT_RID_STABLE");
+          end
 
-        if (read_active) begin
-          assert (rid === observed_arid)
-            else report_assertion_error("AXI_ASSERT_RID_ARID");
-          current_r_count  = r_beat_count + 1;
-          expected_r_count = int'(observed_arlen) + 1;
-          r_beat_count     = current_r_count;
+          if (r_active) begin
+            current_count = r_beat_count + 1;
+            expected_count = active_rlen + 1;
+            r_beat_count = current_count;
+            if (current_count < expected_count)
+              assert (!rlast)
+                else report_assertion_error("AXI_ASSERT_RLAST_EARLY");
+            else if (current_count == expected_count)
+              assert (rlast)
+                else report_assertion_error("AXI_ASSERT_RLAST_MISSING");
+            else
+              assert (1'b0)
+                else report_assertion_error("AXI_ASSERT_R_COUNT_EXCESS");
 
-          if (current_r_count < expected_r_count)
-            assert (!rlast)
-              else report_assertion_error("AXI_ASSERT_RLAST_EARLY");
-          else if (current_r_count == expected_r_count)
-            assert (rlast)
-              else report_assertion_error("AXI_ASSERT_RLAST_MISSING");
-          else
-            assert (1'b0)
-              else report_assertion_error("AXI_ASSERT_R_COUNT_EXCESS");
-
-          if (rlast) begin
-            read_active  = 1'b0;
-            r_beat_count = 0;
+            if (rlast) begin
+              id = int'(active_rid);
+              if (ar_len_by_id[id].size() != 0)
+                expected_count = ar_len_by_id[id].pop_front();
+              if (ar_outstanding_by_id[id] == 0)
+                assert (1'b0)
+                  else report_assertion_error("AXI_ASSERT_R_UNDERFLOW");
+              else
+                ar_outstanding_by_id[id]--;
+              r_active     = 1'b0;
+              r_beat_count = 0;
+            end
+          end
+          if (STAGE3_CHECKS) begin
+            assert (valid_stage3_id(rid))
+              else report_assertion_error("AXI_ASSERT_R_ID");
+            assert (valid_stage3_master_tag(rid))
+              else report_assertion_error("AXI_ASSERT_R_MASTER_TAG");
+            assert (valid_stage3_slave_tag(rid))
+              else report_assertion_error("AXI_ASSERT_R_SLAVE_TAG");
           end
         end
+      end
+
+      if (STAGE3_CHECKS) begin
+        assert (write_outstanding() <= MAX_OUTSTANDING)
+          else report_assertion_error("AXI_ASSERT_WRITE_OUTSTANDING");
+        assert (read_outstanding() <= MAX_OUTSTANDING)
+          else report_assertion_error("AXI_ASSERT_READ_OUTSTANDING");
       end
     end
   end

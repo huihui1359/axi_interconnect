@@ -7,6 +7,7 @@ class axi_stage2_base_test extends axi_base_test;
 
   extern function new(string name = "axi_stage2_base_test",
                       uvm_component parent = null);
+  extern virtual function void build_phase(uvm_phase phase);
   extern function void configure_ready_fixed(
     int unsigned aw_delay,
     int unsigned w_delay,
@@ -36,6 +37,16 @@ function axi_stage2_base_test::new(
   uvm_component parent = null
 );
   super.new(name, parent);
+endfunction
+
+function void axi_stage2_base_test::build_phase(uvm_phase phase);
+  if (uvm_config_db#(axi_env_cfg)::get(this, "", "env_cfg", env_cfg)) begin
+    env_cfg.checker_mode = AXI_CHECKER_STAGE2;
+    env_cfg.m_cfg[0].max_write_outstanding = 1;
+    env_cfg.m_cfg[0].max_read_outstanding  = 1;
+    env_cfg.m_cfg[0].request_prefetch_enabled = 1'b0;
+  end
+  super.build_phase(phase);
 endfunction
 
 function void axi_stage2_base_test::configure_ready_fixed(

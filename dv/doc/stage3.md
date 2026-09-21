@@ -1,1257 +1,1488 @@
 # AXI3 Interconnect UVM验证环境Stage 3执行工单
 
-> 状态：待实施、待审核
-> 前置条件：Stage 2已经冻结，当前M0到S0单端口环境支持1～16拍burst、delay/gap、五通道backpressure、AW/W独立推进、读写并行、完整Monitor重建、协议断言和Stage 2端到端检查  
-> 代码风格：本阶段所有新增和修改代码必须遵守`dv/doc/code_style.md`  
-> 工单格式：本文遵守`dv/doc/task_work_order_standard.md`
+> 状态：待实施
+> 前置条件：dv/doc/stage2.md已经实施并通过回归，当前M0到S0单端口环境支持burst、delay/gap、五通道backpressure、完整Monitor重建、协议断言和Stage 2端到端检查
+> ID定义：本阶段严格遵守dv/doc/ID_intro.md
+> 代码风格：本阶段所有新增和修改代码必须遵守dv/doc/code_style.md
+> 实施边界：本工单只修改dv、sim及验证入口，不修改rtl目录
 
 ## 1. 文档目的和阶段概述
 
-### 1.1 Stage 2已经冻结的能力
+### 1.1 Stage 2已经完成的内容
 
-Stage 2已经完成并冻结以下基线能力：
+Stage 2已经在M0到S0闭环上完成：
 
-- 验证拓扑保持为一个Master agent、一个Slave agent以及真实DUT的M0到S0闭环。
-- Master Driver支持AW、W、AR独立发送，Slave Driver支持B、R独立发送。
-- 支持FIXED、INCR和WRAP burst，W/R burst长度为1～16拍。
-- 支持`addr_delay`、`w_start_delay`、`wbeat_gap[]`、`rsp_delay`和`rbeat_gap[]`。
-- AWREADY、WREADY、ARREADY、BREADY和RREADY分别由独立`latency_gen`控制。
-- 支持AW先于W、W先于AW、完整W burst先于AW以及读写并行。
-- Master/Slave Monitor能够发布逐通道`axi_channel_event`并重建完整request/response。
-- `stage2_e2e_checker`能够比较M0到S0的逐拍转发、完整burst、ID扩展和响应恢复。
-- `axi_protocol_assertions`能够检查stall稳定性、握手payload、LAST、beat数量和基础因果关系。
-- Stage 2保持每个方向最多一笔未完成事务，Master Driver仍使用单一`write_busy/read_busy`上下文。
+- FIXED、INCR和合法WRAP burst。
+- 1～16拍W和R传输。
+- addr_delay、w_start_delay、wbeat_gap[]、rsp_delay和rbeat_gap[]。
+- AW、W、AR、B和R五通道独立backpressure。
+- AW/W独立推进和读写并行。
+- Master/Slave Monitor对完整request和response的重建。
+- 基于真实接口Monitor输出的Stage 2端到端Checker。
+- 五通道stall稳定性、X/Z、LAST和beat数量协议断言。
+- Stage 1和Stage 2正向回归以及独立断言自测。
 
-Stage 3不得破坏上述功能。所有Stage 1和Stage 2正向用例必须继续作为Stage 3回归内容。
+Stage 2仍将每个方向限制为一笔未完成事务，并使用单一写上下文和单一读上下文关联B/R响应。
 
-### 1.2 Stage 3要完成的能力
+### 1.2 Stage 3需要新增的能力
 
-Stage 3在Stage 2能力基础上增加事务级多outstanding和响应乱序：
+Stage 3在Stage 2能力基础上增加：
 
-- Master Driver支持读方向和写方向分别最多4笔在途事务。
-- 读写方向使用独立准入资源，一个方向达到上限不得阻塞另一个方向。
-- Driver使用稳定快照和事务上下文保存异步状态，不依赖sequence原始对象。
-- Master Driver按照BID/RID把响应关联到正确请求。
-- 相同ID的请求按照接受顺序关联，相同ID响应不得乱序。
-- 不同ID的B响应允许乱序返回。
-- 不同ID的完整R burst允许乱序返回。
-- Slave响应路径能够保存多个尚未发送的响应计划，并按定向脚本或随机策略选择不同ID。
-- Master/Slave Monitor按照方向和ID维护多笔请求、响应和burst重建上下文。
-- 建立独立outstanding tracker，对真实握手进行计数、上限检查、最大深度记录和结束检查。
-- 建立`stage3_e2e_checker`，按照端口、方向、ID和同ID序号完成端到端匹配。
-- 协议断言从单事务状态扩展为多ID状态，不再把第二笔AW/AR自动判为错误。
+- Master Driver读、写方向分别最多4笔outstanding。
+- 基于真实AW、WLAST、AR、B和RLAST握手的按ID计数。
+- 相同ID允许存在多笔outstanding。
+- 相同ID的B/R响应严格按照请求接受顺序返回。
+- 不同ID的B/R响应允许按预定义顺序乱序返回。
+- Slave reactive侧保存尚未发送的B/R响应计划并进行ID选择。
+- Master/Slave Monitor按ID维护多个并存请求和响应上下文。
+- Stage 3端到端Checker按完整ID关联事务，不再依赖全局单一FIFO。
+- 独立Outstanding Tracker根据Monitor发布的真实握手event维护按ID观察状态。
+- 完整实现M0到S0场景中的4-bit Master ID和8-bit Slave ID操作。
+- 增加Switch reference model的地址译码和ID编解码核心。
+- 增加outstanding、同ID保序、不同ID乱序和ID映射相关协议检查。
 
 ### 1.3 Stage 3A和Stage 3B划分
 
-Stage 3分为两个连续验收阶段，但两阶段从一开始使用同一套最终架构：
+Stage 3分为两个连续实施阶段：
 
-1. **Stage 3A：多Outstanding和按ID上下文。** 完成credit准入、读写独立pending队列、按ID FIFO、Monitor多上下文、tracker、Checker和有序响应测试。Stage 3A的Slave响应仍按照请求接受顺序返回，用于先验证容量、释放和同ID顺序。
-2. **Stage 3B：不同ID响应乱序。** 在Stage 3A的按ID架构上增加Slave响应调度、B/R不同ID乱序、乱序叠加backpressure、读写同时乱序和随机响应顺序测试。
+1. **Stage 3A：组件能力扩展。** 完成按ID上下文、outstanding计数、Switch reference model、Monitor、断言、Checker、response计划池和编译入口修改。本阶段进行代码审核、编译和elaboration。
+2. **Stage 3B：功能测试和闭环验收。** 建立outstanding、相同ID保序、不同ID乱序、ID映射、并行和stall测试，并运行Stage 1～3正向回归及Stage 3断言自测。
 
-Stage 3A不是全局FIFO临时实现。Driver、Monitor、Tracker和Checker在Stage 3A就必须使用按ID FIFO；Stage 3B只增加响应选择策略和对应验收，不重写Stage 3A的上下文模型。
+Stage 3A编译通过只表示组件可以进入测试，不表示outstanding、乱序和ID关联已经验证正确。
 
-### 1.4 Stage 3能力边界
+### 1.4 Stage 3冻结决策
 
-本阶段保持以下边界：
+本阶段冻结以下实现决策：
 
-- 继续只验证M0到S0，不扩展三主三从、跨端口仲裁或Default Slave。
-- 读方向最多4笔，写方向最多4笔；读写可以同时达到4笔，即最多4+4个未完成事务。
-- 支持相同ID多笔事务；同ID严格按照请求接受顺序完成。
-- 不同ID允许响应乱序，但不允许同一R burst内部切换RID。
-- 不支持不同WID写数据按beat交织，也不支持不同RID读数据按beat交织；beat级交织留到Stage 4。
-- 同一W burst和同一R burst继续保持各自beat顺序。
-- 继续支持Stage 2的全部burst、delay/gap和READY backpressure能力。
-- 只验证启动reset，不验证存在outstanding、队列非空或响应乱序期间的运行时reset；复杂reset留到Stage 5。
-- 不建立三主三从最终Reference Model或系统级Scoreboard；本阶段tracker和Checker只面向M0到S0。
-- Stage 3继续保留`S0-OPEN-01`：Master Driver不向Master sequence返回独立`axi_rsp_item`。响应关联在Driver内部执行，正确性由Monitor、Tracker和Checker从真实接口独立确认。
-- M0到S0写路径继续受`S1-LIMIT-01`约束。不同写ID定向测试只使用`4'h4`、`4'h5`、`4'h6`和`4'h7`，保证`WID[3:2]==2'b01`并路由到S0。
-- 对应下游扩展ID固定为`8'h54`、`8'h55`、`8'h56`和`8'h57`。
-- Stage 3正向Slave响应由真实Slave Monitor重建的完整请求产生，因此B响应在正向用例中晚于AW和完整W请求重建。AXI3中基于最后一个W beat的B因果断言语义继续保留，不在断言中错误增加AXI4式AW强依赖。
+- 只启用M0和S0，不提前扩展三主三从完整环境。
+- Master侧合法ID使用4'h4～4'h7。
+- Slave侧对应扩展ID使用8'h54～8'h57。
+- 读方向最大outstanding为4。
+- 写方向最大outstanding为4。
+- outstanding只统计已经在真实接口完成相应请求握手、但尚未完成最终响应的事务。
+- AW、W和AR mailbox继续使用无界mailbox，不设置容量上限。
+- mailbox中的待发送快照不计入AXI outstanding。
+- 写outstanding上限由AW握手至B握手的事务数决定。
+- w_outstanding_by_id用于记录已完成WLAST、尚未被B消费的写数据状态，不作为新AW的容量上限。
+- 读outstanding上限由AR握手至RLAST握手的事务数决定。
+- 不同ID允许B响应和完整R burst乱序返回。
+- 相同ID必须按照请求接受顺序返回。
+- 一个R burst开始发送后保持连续到RLAST，不在不同RID之间进行beat交织。
+- 一个W burst开始发送后保持连续到WLAST，不在不同WID之间进行beat交织。
+- AXI3 WID支持的写数据交织以及不同RID的读数据beat交织留到Stage 4。
+- Switch reference model只实现地址译码和ID编解码，不实现完整多端口转发和仲裁。
+- S0-OPEN-01继续保留，Master Driver不向Master sequence返回独立axi_rsp_item。
+- UVM sequence_id/transaction_id不参与AXI ID映射。
+- 本阶段不修改RTL，也不在工单中预判RTL实现结果。
+
+### 1.5 Stage 3能力边界
+
+本阶段不实现：
+
+- 三个Master和三个Slave同时工作的完整环境。
+- 跨Master或跨Slave仲裁验证。
+- W/R beat级交织。
+- 多端口Switch TLM转发网络。
+- Default Slave完整验证。
+- 最终系统级Reference Model和三主三从Scoreboard。
+- mailbox、request FIFO和response计划池的容量门控。
+- 运行中reset、outstanding期间reset和reset后事务恢复。
+- Master sequence根据B/R结果产生后续依赖激励。
+- 最终functional coverage collector和覆盖率闭环。
 
 # 第一部分：Stage 3需要完成的任务
 
-## 2. S3-01：冻结Outstanding定义和计数模型
+## 2. S3-01：Outstanding基本原理
 
-### 2.1 两类计数不得混用
+### 2.1 Outstanding定义
 
-Stage 3同时存在两类计数：
+Stage 3使用以下定义：
 
-| 计数 | 所有者 | 用途 | 增加/占用时机 | 减少/释放时机 |
-|---|---|---|---|---|
-| Driver准入槽位 | Master Driver | 限制最多4笔并控制新请求进入通道worker | 请求进入AW/W或AR发送路径之前 | 写事务完成B握手；读事务完成RLAST握手 |
-| 接口实际outstanding | Passive Tracker | 根据真实接口证明DUT和环境行为 | AW或AR真实握手 | B或最后一个R beat真实握手 |
+~~~text
+写事务进入outstanding：AWVALID && AWREADY
+写事务离开outstanding：BVALID && BREADY
 
-Driver准入槽位属于主动流控，不能作为Scoreboard的Expected来源。Tracker实际计数来自Monitor发布的真实`axi_channel_event`，不能读取Driver内部计数或mailbox状态。
+写数据完成待响应：WVALID && WREADY && WLAST
+写数据状态被消费：BVALID && BREADY
 
-### 2.2 写方向协议计数
+读事务进入outstanding：ARVALID && ARREADY
+读事务离开outstanding：RVALID && RREADY && RLAST
+~~~
 
-在本阶段正向闭环中：
+Driver已clone但仍停留在mailbox中的事务不是AXI outstanding事务。
 
-```text
-AWVALID && AWREADY                    -> actual_write_outstanding + 1
-BVALID && BREADY                      -> actual_write_outstanding - 1
-```
+### 2.2 按ID计数数组
 
-要求：
+Master Driver必须保留以下固定命名：
 
-- W握手和WLAST不增加实际写outstanding计数。
-- B握手必须关联一个相同ID的未完成写上下文。
-- 相同BID始终关联该ID最早未完成的写事务。
-- 计数不得小于0或超过配置上限。
-- Driver准入槽位在AW/W两个worker开始前预留，因此即使W先于AW也不会绕过容量限制。
-- Driver只有在该写事务B握手完成后释放准入槽位。
+~~~systemverilog
+int unsigned aw_outstanding_by_id[ID_COUNT];
+int unsigned w_outstanding_by_id[ID_COUNT];
+int unsigned ar_outstanding_by_id[ID_COUNT];
+~~~
 
-### 2.3 读方向协议计数
+其中：
 
-```text
-ARVALID && ARREADY                    -> actual_read_outstanding + 1
-RVALID && RREADY && RLAST             -> actual_read_outstanding - 1
-```
+~~~text
+ID_COUNT = 1 << ID_WIDTH
+~~~
 
-要求：
+在当前Master侧ID_WIDTH为4，因此数组具有16个索引，Stage 3正向测试只使用4'h4～4'h7。
 
-- 普通R beat不释放读outstanding。
-- 第一拍R使用RID选择该ID最早未完成的读请求。
-- Stage 3不允许R beat交织；选中一个读请求后，后续R beat保持相同RID直到RLAST。
-- RLAST完成后才从该ID队列弹出请求并释放Driver读槽位。
+计数规则固定为：
 
-### 2.4 同周期增加和释放
+| 真实握手 | 状态更新 |
+|---|---|
+| AW握手 | aw_outstanding_by_id[AWID]增加1 |
+| WLAST握手 | w_outstanding_by_id[WID]增加1 |
+| B握手 | aw_outstanding_by_id[BID]和w_outstanding_by_id[BID]各减少1 |
+| AR握手 | ar_outstanding_by_id[ARID]增加1 |
+| 非RLAST的R握手 | 不释放读outstanding |
+| RLAST握手 | ar_outstanding_by_id[RID]减少1 |
 
-AW与B、AR与RLAST可以在同一时钟边界分别完成旧事务和新事务的握手。实现不得由两个长期线程无保护地对同一个整数执行`++`和`--`。
+计数器只能在真实VALID、READY同时为1的时钟边界更新。
 
-统一规则：
+### 2.3 全局outstanding数量
 
-- Driver使用credit/semaphore进行容量控制，按ID队列保存关联关系。
-- 需要保留可见计数时，所有更新必须通过单一状态管理路径或短临界区锁完成。
-- Tracker在一个采样边界先解析旧响应完成，再登记同周期新请求，保证同ID的B/R响应关联到边界前已经存在的队首请求。
-- 同周期一增一减时，最终全局计数不变，但两个事务的上下文状态都必须正确更新。
-- credit在响应握手后归还；等待中的准入线程可以随后取得credit，但新VALID只能在后续驱动边界生效。
+写、读全局数量分别由按ID数组求和得到：
 
-### 2.5 上限配置
+~~~text
+write_outstanding = sum(aw_outstanding_by_id[id])
+read_outstanding  = sum(ar_outstanding_by_id[id])
+~~~
 
-`axi_m_agent_cfg`继续使用已有字段：
+不增加write_slots_used或read_slots_used。
 
-```text
-max_write_outstanding
-max_read_outstanding
-```
+不要求额外维护与数组重复的全局可变计数；如果为日志或性能维护镜像总数，必须在同一个状态更新点更新，并通过一致性检查确认其等于数组求和。
 
-本阶段规则：
+### 2.4 上限控制
 
-- 合法范围为1～4。
-- Stage 1/2测试保持默认值1。
-- Stage 3测试在run phase开始前设置为4，或按定向容量用例设置为1、2、3、4。
-- Driver build阶段拒绝0或大于4的配置。
-- 不新增重复的Stage 3专用上限字段。
+- drive_aw在准备发送一个新AW前检查write_outstanding。
+- write_outstanding达到cfg.max_write_outstanding时，drive_aw不得为下一事务拉高AWVALID。
+- B握手释放一个写outstanding后，drive_aw可以继续发送下一事务。
+- drive_ar以相同方式使用read_outstanding和cfg.max_read_outstanding。
+- 达到上限只阻止新的AW或AR进入接口，不停止accept_items接收和clone sequence item。
+- 达到写上限不能停止已有W burst、BREADY、AR或RREADY。
+- 达到读上限不能停止已有R接收、AW、W或BREADY。
+- cfg.max_write_outstanding和cfg.max_read_outstanding的Stage 3合法范围为1～4。
 
-## 3. S3-02：Master Driver实现独立准入和按ID关联
+### 2.5 mailbox和item_done
 
-### 3.1 长期线程结构
+- aw_queue、w_queue和ar_queue继续使用无界mailbox。
+- Master Driver取得item后立即clone。
+- 写快照在item_done前放入AW和W路径。
+- 读快照在item_done前放入AR路径。
+- item_done不等待outstanding空位，不等待接口握手，也不等待B/R响应。
+- sequence完成不表示总线事务完成。
+- 测试必须等待Stage 3 Checker、outstanding数组和相关上下文全部完成。
 
-Master Driver目标线程结构：
+### 2.6 同周期状态更新
 
-```text
-accept_items
-admit_write
-admit_read
-drive_aw
-drive_w
-drive_ar
-receive_b
-receive_r
-watch_reset
-```
+同一时钟边界可能同时出现：
 
-信号所有权继续保持Stage 2规则，新增准入线程和状态管理线程不得驱动接口信号。
+- AW握手和B握手。
+- WLAST握手和B握手。
+- AR握手和RLAST握手。
+- AW、WLAST和B同时握手。
 
-### 3.2 request接收和pending队列
+三个outstanding数组必须只有一个状态更新所有者。实现可以使用统一track_outstanding task，或使用单一同步状态管理方法。
 
-`accept_items()`只完成：
+同周期更新按净变化计算，不能依赖多个并行task对同一数组执行无序的自增和自减。
 
-1. reset释放后调用`get_next_item()`。
-2. clone得到Driver拥有的稳定快照。
-3. 按`dir`放入`write_pending_queue`或`read_pending_queue`。
-4. 调用且只调用一次`item_done()`。
+## 3. S3-02：各通道Outstanding职责
 
-`item_done()`仍表示Driver已经保存request，不表示取得outstanding槽位、接口握手或收到响应。
+### 3.1 AW通道
 
-写方向达到上限时，`admit_write()`等待写credit，但`accept_items()`和`admit_read()`仍可继续推进。读方向达到上限时同理。
+- AW worker继续按aw_queue FIFO取出稳定快照。
+- 在拉高新AWVALID前等待write_outstanding小于配置上限。
+- 空位满足后执行该request的addr_delay。
+- AWVALID拉高后不再因outstanding变化撤销或切换payload。
+- AW握手后按AWID增加aw_outstanding_by_id。
+- 每个AW握手建立一个写事务地址上下文。
+- 同一ID的多个AW上下文按照握手顺序进入该ID的FIFO。
+- 不同ID分别维护独立FIFO。
 
-Stage 3引入pending准入层后，`dv/doc/code_style.md`第4节中“写快照在`item_done()`前同时进入AW/W队列”的Stage 1/2规则必须同步扩展：Stage 3以“快照在`item_done()`前进入唯一方向pending queue”完成所有权转移，取得credit后再由准入线程同时fan-out到AW/W worker。不得在代码实现和风格文档之间保留互相矛盾的对象所有权规则。
+### 3.2 W通道
 
-### 3.3 credit准入
+- W worker继续按w_queue顺序发送完整burst。
+- Stage 3不允许不同WID的beat交织。
+- W发送不等待AW握手，继续支持W先于AW。
+- W通道不使用write_outstanding上限阻塞已有数据发送。
+- 每个WLAST握手按WID增加w_outstanding_by_id。
+- 完整W burst必须关联到与其共享request快照的写事务上下文。
+- WLAST前的普通W beat不增加w_outstanding_by_id。
 
-Driver分别持有：
+### 3.3 B通道
 
-```text
-write_credit = max_write_outstanding
-read_credit  = max_read_outstanding
-```
+- BREADY继续由独立latency_gen产生backpressure。
+- 每个B握手使用完整4-bit BID查找Master侧写事务上下文。
+- BID必须对应至少一个未完成写事务。
+- 当前Stage 3验证模型产生B响应前要求完整写request已经在Slave Monitor重建完成。
+- B握手时，aw_outstanding_by_id[BID]和w_outstanding_by_id[BID]均不得为0。
+- 合法B握手后两个计数器各减1。
+- 相同BID必须消费该ID写上下文FIFO的队首。
+- 不同BID可以按任意已配置顺序完成。
 
-`admit_write()`行为：
+### 3.4 AR通道
 
-1. 从`write_pending_queue`取得快照。
-2. 等待并取得一个写credit。
-3. 创建独立写上下文并分配单调递增的本地序号。
-4. 将上下文加入`write_by_id[id]`队尾。
-5. 把同一个只读上下文句柄分别放入AW和W worker mailbox。
+- AR worker继续按ar_queue FIFO取出稳定快照。
+- 在拉高新ARVALID前等待read_outstanding小于配置上限。
+- 空位满足后执行addr_delay。
+- AR握手后按ARID增加ar_outstanding_by_id。
+- 每个AR握手将request快照放入对应ARID的读上下文FIFO。
+- 同一ARID允许存在多笔未完成读事务。
 
-`admit_read()`行为：
+### 3.5 R通道
 
-1. 从`read_pending_queue`取得快照。
-2. 等待并取得一个读credit。
-3. 创建独立读上下文并分配本地序号。
-4. 将上下文加入`read_by_id[id]`队尾。
-5. 把上下文放入AR worker mailbox。
+- RREADY继续由独立latency_gen产生逐beat backpressure。
+- 一个新R burst的第一拍使用RID选择对应读上下文FIFO。
+- 必须选择该RID队列的队首事务。
+- 选中后锁定当前读上下文，直到RLAST握手。
+- Stage 3中RID不得在一个未完成R burst内变化。
+- 每拍检查RID、RRESP和beat索引。
+- 只有RLAST真实握手后，ar_outstanding_by_id[RID]减少1并弹出读上下文。
+- 不同RID的完整R burst可以按任意已配置顺序返回。
 
-上下文中的request快照在事务结束前不得修改。AW/W共享上下文只用于引用同一不可变request和更新明确的握手完成标志，不得分别再次clone成内容可能不一致的事务。
+## 4. S3-03：Out-of-order基本原理
 
-### 3.4 写响应关联
+### 4.1 Stage 3乱序定义
 
-B握手时使用BID索引`write_by_id[BID]`：
+Stage 3的out-of-order定义为：
 
-- 队列为空表示孤立B响应，报告UVM error。
-- 队首是唯一合法关联对象，不允许从同ID队列中间搜索。
-- 检查B响应到达前完整W burst已经握手完成。
-- 正向Stage 3场景中还应观察到AW已经握手。
-- 记录BRESP并把队首弹出。
-- 归还一个写credit。
+~~~text
+不同AXI ID的B响应可以与请求接受顺序不同。
+不同AXI ID的完整R burst可以与AR接受顺序不同。
+~~~
 
-不同BID可以以任意顺序访问各自队首，从而支持不同ID响应乱序。
+Stage 3不把以下行为称为out-of-order：
 
-### 3.5 读响应关联
+- AW和W的先后关系。
+- W beat在不同WID之间交织。
+- R beat在不同RID之间交织。
+- READY早于或晚于VALID。
 
-Stage 3使用一个全局活动R burst上下文，因为本阶段不支持R beat交织：
+### 4.2 相同ID顺序规则
 
-- 第一个R beat握手时，根据RID取得`read_by_id[RID][0]`并锁定为活动上下文。
-- 队列为空表示无请求R响应。
-- 后续beat的RID必须与活动上下文ID一致。
-- 逐拍检查beat索引和RLAST位置。
-- RLAST握手时弹出该ID队首、清除活动上下文并归还一个读credit。
-- RLAST之前不得选择另一个RID。
+对于同一ID：
 
-### 3.6 状态并发保护
+- 第一个被接受的AW事务必须先于该ID的第二个AW事务完成B响应。
+- 第一个被接受的AR事务必须先于该ID的第二个AR事务完成整个R burst。
+- response计划列表即使多次包含相同ID，也只能依次弹出该ID pending FIFO的队首。
+- 不允许通过内部issue序号选择同ID队列中的非队首事务。
 
-以下共享状态必须通过单一owner或短临界区锁保护：
+### 4.3 不同ID乱序规则
 
-- `write_by_id[]`和`read_by_id[]`。
-- 准入槽位的可见计数。
-- 本地事务序号。
-- 活动R上下文。
+对于不同ID：
 
-临界区内不得等待时钟、等待mailbox、等待sequence item或等待接口握手。credit等待在进入状态临界区之前完成。
+- B返回顺序不要求与AW握手顺序一致。
+- R burst返回顺序不要求与AR握手顺序一致。
+- B和R使用独立调度器，允许并行工作。
+- 一个方向发生stall不能强制另一个方向停止。
+- 乱序策略只改变response计划进入Slave Driver的顺序，不改变单个response item内部的payload和时序字段。
 
-## 4. S3-03：实现同ID有序和不同ID乱序
+### 4.4 预定义返回顺序
 
-### 4.1 顺序规则
+Stage 3 reactive response机制至少支持：
 
-Stage 3固定以下顺序规则：
+~~~text
+b_return_order[$]
+r_return_order[$]
+~~~
 
-| 场景 | 是否允许 | 关联规则 |
-|---|---|---|
-| 相同ID的B响应乱序 | 不允许 | 相同BID总是弹出该ID队首 |
-| 不同ID的B响应乱序 | 允许 | BID选择对应ID队首 |
-| 相同ID的R burst乱序 | 不允许 | 相同RID总是关联该ID最早AR |
-| 不同ID的完整R burst乱序 | 允许 | 每个burst开始时RID选择对应ID队首 |
-| R beat交织 | 不允许 | 一个burst开始后锁定RID直到RLAST |
-| W beat交织 | 不允许 | 一个W burst完整发送后才发送下一burst |
+两者保存Slave侧完整8-bit ID。
 
-### 4.2 Slave请求保存
+对于M0到S0，合法脚本ID为：
 
-Slave reactive路径只能消费Slave Monitor通过`request_fifo`发布的真实完整request。收到请求后：
+~~~text
+8'h54, 8'h55, 8'h56, 8'h57
+~~~
 
-- 按方向拆分为write pending和read pending。
-- 按扩展ID保存为每ID FIFO。
-- 为每个请求建立响应计划，包含方向、ID、LEN、数据模式、RESP、delay/gap和本地接受序号。
-- 不允许sequence凭空构造没有真实request的B/R响应。
+当脚本指定某ID时：
 
-### 4.3 定向响应脚本
+1. 等待该ID至少存在一个eligible response计划。
+2. 从该ID pending FIFO弹出队首。
+3. 写响应交给B发送路径。
+4. 读响应以一个完整axi_rsp_item交给R发送路径。
+5. 如果直到测试超时仍不存在目标ID，报告明确错误，不静默跳过。
 
-Stage 3B sequence允许为B和R分别提供ID顺序脚本，例如：
+### 4.5 默认和随机策略
 
-```text
-请求ID顺序：4, 5, 6, 7
-B响应顺序：6, 4, 7, 5
-R响应顺序：7, 5, 4, 6
-```
+- Stage 1/2 reactive sequence继续保留原有FIFO行为。
+- Stage 3 scripted sequence使用预定义ID顺序。
+- Stage 3可以增加不同ID随机选择smoke，但随机策略不能代替定向顺序测试。
+- 随机选择只能在当前eligible的不同ID队首之间进行。
+- 相同ID内部永远保持FIFO。
 
-选择规则：
+## 5. S3-04：ID和Switch reference model
 
-- 脚本中的ID必须存在对应pending队列。
-- 选择相同ID时只能弹出队首。
-- 脚本必须覆盖本场景全部计划，不得遗漏或重复消费。
-- B和R脚本彼此独立，可以并行推进。
-- R选择一个计划后，Slave Driver必须发送完整burst至RLAST。
-- 随机场景从当前非空ID集合中随机选择，不通过打乱同ID队列实现乱序。
+### 5.1 Master侧4-bit ID
 
-### 4.4 Slave Driver边界
+Master侧ID格式为：
 
-Slave Driver继续接受完整`axi_rsp_item`快照并分别放入`b_queue`或`r_queue`。乱序选择发生在reactive sequence/响应调度器，不发生在Driver内部：
+~~~text
+[3:2] 目标Slave编号
+[1:0] 事务ID-tag
+~~~
 
-- `b_queue`按照sequence提交顺序发送B。
-- `r_queue`按照sequence提交顺序发送完整R burst。
-- B和R worker继续独立并行。
-- Driver不得自行改变相同ID顺序。
-- Driver不得把一个R response item拆开后与另一个RID交织。
+Stage 3 M0到S0合法ID：
 
-## 5. S3-04：保持Stage 2通道和时序能力
+| transaction tag | Master ID |
+|---|---|
+| 2'b00 | 4'h4 |
+| 2'b01 | 4'h5 |
+| 2'b10 | 4'h6 |
+| 2'b11 | 4'h7 |
 
-### 5.1 AW/W/AR发送
+AWID、WID、ARID使用完整4-bit ID。BID和RID必须恢复相同的4-bit原始ID。
 
-- 每个worker仍使用FIFO取得已经准入的上下文。
-- AW和W引用同一写上下文，但继续独立计算和执行Stage 2时序。
-- W worker一次发送完整burst；多个写事务之间不做beat交织。
-- AR worker一次发送一个AR请求，可以在先前读响应返回前继续发送其他已准入AR。
-- AW worker可以在先前B返回前继续发送其他已准入AW。
-- 写credit耗尽时不得装载新的写事务到AW/W worker。
-- 读credit耗尽时不得装载新的读事务到AR worker。
+### 5.2 Slave侧8-bit ID
 
-### 5.2 B/R READY
+Slave侧ID格式为：
 
-- BREADY和RREADY继续使用独立`latency_gen`。
-- BREADY backpressure不得阻止AW/W worker发送仍有credit的其他写事务。
-- RREADY backpressure不得阻止AR worker发送仍有credit的其他读事务。
-- 一个方向的READY stall不得阻止另一个方向使用自己的credit和通道。
+~~~text
+[7:6] 实际目标Slave编号
+[5:4] 请求来源Master编号
+[3:0] 原始Master侧4-bit ID
+~~~
 
-### 5.3 burst、delay和gap
-
-Stage 3不改变Stage 2字段语义：
-
-- `addr_delay`按每个AW或AR request独立执行。
-- `w_start_delay`和`wbeat_gap[]`按每个写burst执行。
-- `rsp_delay`和`rbeat_gap[]`按每个响应计划执行。
-- VALID stall期间payload和当前上下文保持稳定。
-- 不同事务可以具有不同delay/gap。
-- response reorder只能改变完整响应事务的选择顺序，不能改变选中burst内部的gap内容和beat顺序。
-
-### 5.4 读写并行
-
-Stage 3必须支持：
-
-- 写方向4笔在途的同时继续接受和发送读请求。
-- 读方向4笔在途的同时继续接受和发送写请求。
-- B和R同周期握手。
-- AW、W、AR和B/R在允许的不同通道上并行握手。
-- 一个方向释放credit后立即允许该方向pending队首继续准入。
+M0到S0的合法映射为：
+
+| Master ID | Slave ID |
+|---|---|
+| 4'h4 | 8'h54 |
+| 4'h5 | 8'h55 |
+| 4'h6 | 8'h56 |
+| 4'h7 | 8'h57 |
+
+### 5.3 地址映射
+
+Switch reference model必须实现：
+
+| 地址范围 | 路由 |
+|---|---|
+| 32'h0000_0000～32'h0000_0FFF | S0 |
+| 32'h0000_2000～32'h0000_2FFF | S1 |
+| 32'h0000_4000～32'h0000_4FFF | S2 |
+| 其他 | Default |
+
+整个burst只按AW/AR地址译码一次，不对每个数据beat重新译码。
+
+### 5.4 Switch reference model接口
+
+Stage 3提前实现以下无状态映射核心：
+
+~~~text
+decode_address(address) -> S0/S1/S2/DEFAULT
+decode_w_target(wid) -> S0/S1/S2/INVALID
+master_to_tag(port_index) -> 01/10/11/INVALID
+slave_to_tag(route) -> 01/10/11/INVALID
+build_master_id(slave, transaction_tag) -> 4-bit ID
+encode_sid(master, slave, original_id) -> 8-bit SID
+decode_master(sid) -> M0/M1/M2/INVALID
+restore_id(sid) -> 4-bit original ID
+~~~
+
+该模型：
+
+- 只计算路由和ID。
+- 不驱动任何接口。
+- 不选择arbiter winner。
+- 不维护outstanding。
+- 不实现TLM事务转发。
+- 不替代Monitor和Checker。
+
+### 5.5 五通道ID关系
+
+Checker必须验证：
+
+~~~text
+S_AWID = {decode_address(AWADDR), source_master_tag, M_AWID}
+S_WID  = {M_WID[3:2], source_master_tag, M_WID}
+S_ARID = {decode_address(ARADDR), source_master_tag, M_ARID}
+
+M_BID  = S_BID[3:0]
+M_RID  = S_RID[3:0]
+~~~
+
+正常请求还必须满足：
+
+~~~text
+M_WID == 对应M_AWID
+S_WID == 对应S_AWID
+M_AWID[3:2] == decode_address(M_AWADDR)
+M_ARID[3:2] == decode_address(M_ARADDR)
+S_ID[7:6] == S_ID[3:2]
+S_ID[5:4] == M0 tag
+~~~
+
+## 6. S3-05：数据流和职责边界
+
+### 6.1 请求数据流
+
+~~~text
+Master Stage 3 sequence
+        │ 4-bit axi_req_item
+        ▼
+Master sequencer
+        ▼
+Master Driver clone
+        ├── aw_queue
+        ├── w_queue
+        └── ar_queue
+        ▼
+m_if → DUT → s_if
+~~~
+
+### 6.2 Slave响应计划流
+
+~~~text
+Slave Monitor完整request
+        │ 8-bit axi_req_item
+        ▼
+Slave sequencer request_fifo
+        ▼
+Stage 3 reactive collector
+        ├── pending_b_by_id[id][$]
+        └── pending_r_by_id[id][$]
+                 │
+                 ▼
+        B/R response scheduler
+                 │ 8-bit axi_rsp_item
+                 ▼
+            Slave Driver
+                 ▼
+             s_if → DUT
+~~~
+
+### 6.3 Master响应观察流
+
+~~~text
+DUT → m_if
+      ├── Master Driver：响应关联、outstanding释放、本地运行检查
+      └── Master Monitor：发布B/R event和完整response
+                              ▼
+                     stage3_e2e_checker
+~~~
+
+Master Driver不调用put_response，Master sequence不调用get_response。
+
+### 6.4 独立观察路径
+
+~~~text
+Master Monitor channel event ──┐
+                              ├── upstream outstanding tracker
+Slave Monitor channel event  ──┘
+
+Master/Slave Monitor channel/request/response
+                              └── stage3_e2e_checker
+~~~
+
+Tracker只使用Monitor观察到的真实握手，不读取Driver计数器、mailbox或response脚本。Driver内部计数与Tracker观察计数独立形成，并在关键边界和结束状态进行核对。
 
 # 第二部分：测试点、时序约束和协议检查
 
-## 6. S3-05：冻结准入、计数和释放时序
+## 7. S3-06：Outstanding功能测试点
 
-### 6.1 Driver准入周期语义
+### 7.1 写outstanding深度
 
-- pending request只有取得credit后才能进入AW/W或AR worker mailbox。
-- `max_*_outstanding==1`时行为应与Stage 2单事务限制等价。
-- 第4个credit被占用后，第5笔同方向request可保存在pending queue，但不能使对应地址VALID进入发送状态。
-- B或RLAST握手归还credit后，等待中的准入线程可以继续。
-- 新准入事务的VALID最早在其worker后续可发送边界拉高，不允许在归还credit的同一采样边界凭空完成新握手。
+定向覆盖：
 
-### 6.2 Tracker采样顺序
+- 最大值配置为1、2、3和4。
+- 连续发出4笔AW并延迟全部B响应。
+- write_outstanding依次达到1、2、3和4。
+- 深度为4时，第5笔AW不得握手。
+- 释放一个B后，第5笔AW可以继续。
+- W通道、AR/R通道和BREADY在AW满时仍可推进。
+- 四笔使用四个不同ID。
+- 四笔全部使用相同ID。
+- 两组ID重复，例如4、5、4、5。
 
-Tracker只消费真实握手event。对于同一`sample_cycle`内多个通道事件：
+### 7.2 写数据完成计数
 
-1. 保存本周期所有输入event，不依赖analysis port调用先后推断协议先后。
-2. 先处理B和RLAST对旧上下文的完成。
-3. 再处理AW和AR对新上下文的登记。
-4. W和普通R beat更新对应burst状态。
-5. 计算周期结束后的全局计数和每ID计数。
+- 每个WLAST握手只增加一次w_outstanding_by_id。
+- 非最后W beat不增加计数。
+- B握手前对应W计数必须存在。
+- B握手后对应AW/W计数同时减少。
+- BREADY stall期间计数不提前减少。
+- AW先、W先和AW/W并行均能形成正确计数。
 
-同周期完成和新建不得造成错误弹出新请求或漏掉旧请求。
+### 7.3 读outstanding深度
 
-### 6.3 达到上限的检查
+定向覆盖：
 
-定向容量测试必须从接口实际握手确认：
+- 最大值配置为1、2、3和4。
+- 连续发出4笔AR并延迟R响应。
+- read_outstanding依次达到1、2、3和4。
+- 深度为4时，第5笔AR不得握手。
+- 一个RLAST握手后第5笔AR可以继续。
+- 四笔使用四个不同ID。
+- 四笔全部使用相同ID。
+- 两组ID重复，例如4、6、4、6。
 
-- 已经观察到4个AW且尚无对应B，才算写深度达到4。
-- 已经观察到4个AR且尚无对应RLAST，才算读深度达到4。
-- 只把4个item交给Driver不代表达到4笔实际outstanding。
-- 在保持4笔未完成期间观察固定窗口，确认没有第5个AW/AR握手。
-- 释放一个响应后确认第5个AW/AR最终完成握手。
+### 7.4 同周期更新
 
-## 7. S3-06：多Outstanding功能测试点
+定向构造：
 
-### 7.1 深度测试
+- AW握手与B握手同周期。
+- WLAST握手与B握手同周期。
+- AW、WLAST与B握手同周期。
+- AR握手与RLAST握手同周期。
+- B和RLAST同周期。
 
-写和读分别覆盖：
+每种场景检查净计数、上下文队列和结束状态一致。
 
-```text
-max_outstanding = 1, 2, 3, 4
-```
+## 8. S3-07：Out-of-order功能测试点
 
-每个深度检查：
+### 8.1 B响应乱序
 
-- 发出的请求数达到配置上限。
-- Tracker最大观察深度等于目标值。
-- 当前深度从0逐步达到目标值。
-- 响应完成后逐步回到0。
-- Driver没有提前释放或重复释放credit。
+至少覆盖：
 
-### 7.2 第5笔阻塞和释放
-
-分别建立写和读场景：
-
-1. 连续发送5笔不同ID或包含重复ID的请求。
-2. Slave暂缓第1～4笔响应。
-3. 确认只有4个AW/AR完成握手。
-4. 保持至少20个周期，确认第5笔没有地址握手。
-5. 返回其中一笔B或完整R burst。
-6. 确认第5笔随后完成地址握手。
-7. 完成全部响应并确认上下文清空。
-
-### 7.3 同ID多事务
-
-同一个ID连续发送4笔，使用不同地址、数据、长度和响应内容：
-
-- AW/AR可以在前一响应完成前连续接受。
-- 相同ID的B/R必须按请求接受顺序关联。
-- Checker使用同ID队列序号而不是只比较ID。
-- B场景使用不同BRESP模式或对应上下文序号证明顺序。
-- R场景使用不同数据基址和LEN证明顺序。
-
-### 7.4 快照和对象所有权
-
-定向测试复用或修改sequence侧临时对象后，必须确认已经进入Driver的4个请求仍保持各自原始内容：
-
-- ID、地址、LEN、burst属性不变。
-- 每个W beat数据和WSTRB不变。
-- delay/gap数组不变。
-- `item_done()`每个request只发生一次，且不等待响应。
-
-## 8. S3-07：响应乱序测试点
-
-### 8.1 不同ID B乱序
-
-使用上游ID`4'h4`、`4'h5`、`4'h6`和`4'h7`发出4笔写事务，至少覆盖：
-
-```text
-请求顺序：4, 5, 6, 7
-响应顺序：7, 6, 5, 4
-
-请求顺序：4, 5, 6, 7
-响应顺序：6, 4, 7, 5
-```
+~~~text
+AW接受顺序：54, 55, 56, 57
+B返回顺序 ：57, 55, 54, 56
+~~~
 
 检查：
 
-- 下游BID使用对应扩展ID。
-- 上游BID恢复为原始4-bit ID。
-- 每个B只释放对应ID队首上下文。
-- 全局返回顺序与请求顺序不同不会报错。
-- 同ID队列内部顺序仍保持。
+- 每个BID属于已完成写request。
+- 上游BID恢复为4'h4～4'h7。
+- 每个写事务只产生一个B。
+- 不同ID乱序不会错误弹出其他ID上下文。
 
-### 8.2 不同ID R burst乱序
+### 8.2 R响应乱序
 
-使用4个不同ID和可区分的LEN、数据基址：
+至少覆盖：
 
-- AR按照4、5、6、7顺序接受。
-- 完整R burst按照7、5、4、6等脚本返回。
-- 每个burst内部RID保持不变。
-- 每个burst内部beat索引、数据、RRESP和RLAST正确。
-- 前一个burst完成RLAST后才允许选择下一个RID。
+~~~text
+AR接受顺序：54, 55, 56, 57
+R返回顺序 ：56, 54, 57, 55
+~~~
 
-### 8.3 乱序叠加backpressure
+每个读事务使用可区分的RDATA模式。检查：
 
-- B乱序时对BREADY施加不同长度stall。
-- R乱序时在第一拍、中间拍和最后一拍施加RREADY stall。
-- VALID stall期间响应选择结果和payload保持稳定。
-- 已经拉高BVALID/RVALID后不得因为另一个ID更优而切换当前响应。
-- backpressure只改变握手时间，不改变预定的同ID顺序。
+- 第一拍RID选择正确读上下文。
+- 整个burst保持相同RID。
+- beat数量和原ARLEN一致。
+- RLAST只出现在最后一拍。
+- 一个burst结束后才选择下一个RID。
 
-### 8.4 随机响应顺序
+### 8.3 相同ID保序
 
-随机测试从当前非空ID集合选择下一响应，必须通过实际采样统计确认：
+写方向：
 
-- 至少发生一次不同ID返回顺序反转。
-- 至少达到一次写深度4和读深度4。
-- 至少出现一次相同ID队列深度大于1。
-- B和R均出现非零backpressure。
-- 随机测试不能替代7.1～8.3中的定向测试。
+- 连续发出至少3笔相同ID写请求。
+- 每笔使用可区分BRESP，或使用Checker内部issue序号验证队首消费。
+- 返回计划多次指定相同ID。
+- 实际完成顺序必须等于AW接受顺序。
 
-## 9. S3-08：协议断言和状态一致性检查
+读方向：
 
-### 9.1 断言部署
+- 连续发出至少3笔相同ID读请求。
+- 每笔使用不同RDATA base pattern。
+- 实际完整R burst顺序必须等于AR接受顺序。
 
-继续在`m_if`和`s_if`分别实例化`axi_protocol_assertions`：
+### 8.4 混合ID和重复ID
 
-- 上游使用4-bit ID。
-- 下游使用8-bit扩展ID。
-- stall稳定性、X/Z、LAST和beat数量检查继续保留。
-- 单一`aw_seen/read_active`状态必须扩展或替换，不能把合法第二笔AW/AR判为outstanding错误。
+至少覆盖：
 
-### 9.2 多事务因果关系
+~~~text
+请求ID：54, 55, 54, 56
+响应ID：55, 54, 56, 54
+~~~
 
-断言至少检查：
+不同ID可以越过，相同54的第二笔不能越过第一笔。
 
-- B响应ID存在对应的已完成W burst资格。
-- R响应ID存在对应AR请求。
-- 相同W burst内WID稳定，Stage 3不允许W beat交织。
-- 活动R burst在RLAST前RID稳定，Stage 3不允许R beat交织。
-- RLAST只出现在对应LEN的最后一拍。
-- WLAST只出现在对应LEN的最后一拍。
-- 没有上下文的B/R触发错误。
+### 8.5 B/R并行
 
-AXI3 B因果继续以最后一个W beat完成为必要资格，不增加“必须先完成AW握手”的AXI4式断言。正向reactive环境仍等待完整AW/W request后才生成B。
+- 写、读各保持2～4笔outstanding。
+- B和R在同周期或相邻周期握手。
+- B返回顺序和R返回顺序分别配置。
+- 写方向stall不能改变读返回计划。
+- 读方向stall不能改变写返回计划。
 
-### 9.3 策略上限检查边界
+### 8.6 backpressure叠加
 
-`max_read_outstanding/max_write_outstanding`是验证环境配置策略，不是接口固定协议参数：
+- BVALID等待BREADY期间保持BID/BRESP。
+- RVALID等待RREADY期间保持RID/RDATA/RRESP/RLAST。
+- response已经选中后，stall期间不能改选其他ID。
+- stall解除后只完成当前response或当前beat。
+- 乱序选择发生在response尚未锁定之前。
 
-- Driver负责不超过配置上限地准入。
-- Tracker根据真实握手检查实际深度不超过配置。
-- Checker检查请求和响应关联。
-- 协议断言不读取Driver内部cfg，也不重复实现动态credit策略。
+## 9. S3-08：ID映射测试点
 
-### 9.4 负向自测
+### 9.1 地址到Master ID
 
-Stage 3断言自测至少覆盖：
+对S0地址窗口分别使用tag 00、01、10、11，得到：
 
-- 合法第二笔AW/AR不会误报。
-- 没有请求的B/R触发因果错误。
-- R burst中途改变RID触发错误。
-- W burst中途改变WID触发错误。
-- 同一活动burst提前或缺失LAST触发错误。
-- 多事务stall期间改变payload触发稳定性错误。
-- 预期断言触发与真实自测失败分离。
+~~~text
+4'h4, 4'h5, 4'h6, 4'h7
+~~~
 
-## 10. S3-09：Reset和异常场景边界
+检查AWID和ARID高两位均与地址目标一致。
 
-### 10.1 本阶段Reset要求
+### 9.2 4-bit到8-bit扩展
 
-- 启动reset期间所有主动VALID/READY保持Stage 2复位规则。
-- reset释放后credit初始值等于配置上限。
-- 所有pending queue、按ID队列、活动R上下文、Tracker计数和最大深度记录从空状态开始。
-- 启动reset不得造成sequencer握手永久阻塞。
+逐一检查：
 
-### 10.2 本阶段不验证的Reset
+~~~text
+4'h4 -> 8'h54
+4'h5 -> 8'h55
+4'h6 -> 8'h56
+4'h7 -> 8'h57
+~~~
 
-以下场景不属于Stage 3验收：
+AW、W和AR三个通道分别检查，不允许只检查地址通道。
 
-- 已占用credit时reset。
-- AW与W只有一个完成时reset。
+### 9.3 响应ID恢复
+
+- S_BID 8'h54～8'h57恢复为M_BID 4'h4～4'h7。
+- S_RID 8'h54～8'h57恢复为M_RID 4'h4～4'h7。
+- BID和RID恢复与对应请求上下文一致。
+- 不同ID乱序时仍按当前响应SID恢复，不能使用全局请求顺序猜测。
+
+### 9.4 Switch reference model单元测试
+
+单独验证：
+
+- 三个正常地址窗口和边界地址。
+- Default地址译码。
+- 三个Master tag。
+- 三个Slave tag。
+- build_master_id。
+- encode_sid。
+- decode_master。
+- restore_id。
+- decode_w_target。
+
+该单元测试只检查DV reference model，不访问DUT。
+
+## 10. S3-09：协议断言和状态检查
+
+### 10.1 断言部署
+
+继续在m_if和s_if分别例化参数化axi_protocol_assertions，并扩展Stage 3观察状态。
+
+Stage 3新增检查必须基于真实接口握手，不读取Driver mailbox、sequence计划或Checker内部队列。
+
+### 10.2 Outstanding相关检查
+
+至少检查：
+
+- AW握手后对应ID计数增加。
+- WLAST握手后对应ID数据完成计数增加。
+- B握手不能消费不存在的W完成状态。
+- AR握手后对应ID计数增加。
+- R beat不能使用没有pending AR上下文的RID。
+- RLAST不能消费不存在的读outstanding。
+- 每方向outstanding不得超过配置的Stage 3上限。
+- 计数不得下溢。
+- reset释放后的初始计数为0。
+
+AXI3通用BVALID因果断言继续沿用Stage 2已经冻结的规则；完整AW/W/B事务关联由Stage 3状态检查和Checker共同完成。
+
+### 10.3 同ID顺序检查
+
+- 相同ARID的读请求按握手顺序进入FIFO。
+- 相同RID只能消费对应ARID FIFO队首。
+- 相同AWID的写请求按握手顺序进入FIFO。
+- 相同BID只能消费对应写上下文FIFO队首。
+- 断言无法从接口payload唯一分辨的同ID写实例，由Monitor/Checker的内部issue顺序补充检查。
+
+### 10.4 非交织检查
+
+Stage 3项目级断言检查：
+
+- 一个W burst开始后，直到WLAST握手前WID保持不变。
+- 一个R burst开始后，直到RLAST握手前RID保持不变。
+- WLAST/RLAST数量和LEN一致。
+- 一个burst未完成时不能切换到其他ID。
+
+这些检查是Stage 3能力边界，不表示AXI3协议永久禁止交织；Stage 4实现交织后必须更新或关闭对应项目级断言。
+
+### 10.5 ID有效性检查
+
+握手时检查：
+
+- 所有ID位均不含X/Z。
+- M0到S0正向测试的Master请求ID属于4'h4～4'h7。
+- 下游SID属于8'h54～8'h57。
+- AWID与WID按完整ID关联。
+- ARID与RID按完整ID关联。
+- SID的slave tag、master tag和original ID字段一致。
+
+### 10.6 现有断言继续生效
+
+Stage 2以下断言不得回退：
+
+- 五通道VALID stall稳定性。
+- VALID在握手前不得撤销。
+- 握手payload不得包含X/Z。
+- WLAST/RLAST提前、缺失和beat数量检查。
+- reset期间Testbench主动驱动VALID/READY为0。
+
+### 10.7 负向断言自测
+
+新增独立负向场景：
+
+- B响应使用没有pending写事务的BID。
+- R响应使用没有pending读事务的RID。
+- 相同ID第二笔响应提前返回。
+- R burst中途改变RID。
+- W burst中途改变WID。
+- outstanding计数故意超过4。
+- 下游SID master tag错误。
+- 下游SID slave tag与original ID目标位不一致。
+
+负向自测必须区分预期断言触发和测试失败，不进入正向回归。
+
+## 11. S3-10：覆盖率基础观察点
+
+Stage 3不建立最终functional coverage collector，但必须保证Monitor event、Checker状态和测试日志可以支持后续采样：
+
+- read outstanding深度0～4。
+- write outstanding深度0～4。
+- Driver内部深度与Tracker接口观察深度的一致性。
+- 每个ID独立outstanding深度。
+- 使用ID数量1～4。
+- 相同ID多笔和不同ID多笔。
+- FIFO返回、完全逆序、部分逆序。
+- B和R并行。
+- AW/W先后关系与outstanding深度交叉。
+- response乱序与BREADY/RREADY stall交叉。
+- burst长度、burst类型与乱序交叉。
+- ID tag 00、01、10、11。
+- 同周期增加和释放。
+
+日志中必须能够打印ID、方向、issue顺序、请求接受顺序、响应计划顺序和实际响应顺序。
+
+## 12. S3-11：Reset和异常边界
+
+### 12.1 本阶段Reset要求
+
+- 正常回归只在启动reset释放后发送事务。
+- reset期间三个outstanding数组清零。
+- reset期间所有按ID上下文队列清空。
+- reset期间Slave response计划池和脚本索引清空。
+- Monitor清除所有AW/W/AR/B/R重建上下文。
+- Stage 3 Checker在启动reset后从空状态开始。
+
+### 12.2 本阶段不验证
+
+- outstanding存在时进入reset。
 - B/R乱序返回过程中reset。
-- 同ID队列非空时reset。
-- 准入线程正在等待credit时reset。
-- R burst中途reset。
+- W/R burst中途reset。
+- reset后重放部分请求。
+- reset与response脚本恢复。
 
-这些场景留到Stage 5统一处理。Stage 3代码不得宣称已经支持复杂运行时reset，也不得用未经测试的自动重放逻辑处理旧事务。
+这些内容留到Stage 5复杂reset阶段。
 
 # 第三部分：各组件需要完成的内容
 
-## 11. S3-10：组件修改总览
+## 13. S3-12：组件修改总览
 
-| 组件 | Stage 2当前能力 | Stage 3目标 | 动作 |
-|---|---|---|---|
-| `axi_m_agent_cfg` | 上限字段存在但Driver强制为1 | 合法范围1～4 | 修改 |
-| `axi_outstanding_context` | 不存在 | 保存稳定request、序号和通道完成状态 | 新增 |
-| Master Driver | 单写、单读busy上下文 | pending、credit、按ID FIFO和4+4事务 | 修改 |
-| Slave Driver | B/R独立FIFO，逐item发送 | 保持Driver FIFO；接受乱序调度结果 | 小幅修改或保留 |
-| Master Monitor | 单AW/W和单AR/R上下文 | 按ID多上下文，W/R burst不交织 | 修改 |
-| Slave Monitor | 单AW/W和单AR/R上下文 | 按ID多上下文，真实request持续发布 | 修改 |
-| Slave reactive sequence | 收到请求后顺序响应 | 保存计划并按ID脚本/随机选择 | 新增Stage 3 sequence |
-| `axi_outstanding_tracker` | 不存在 | 实际握手计数、上限和最大深度 | 新增 |
-| `stage2_e2e_checker` | 单读、单写上下文 | 保持冻结供旧回归使用 | 保留 |
-| `stage3_e2e_checker` | 不存在 | 按ID和序号比较多事务及乱序响应 | 新增 |
-| `axi_protocol_assertions` | 单事务因果状态 | 多ID因果和非交织检查 | 修改 |
-| `axi_env` | Stage 1/2 Checker连接 | 增加Tracker和Stage 3 Checker连接 | 修改 |
-| Stage 3 sequence/test | 不存在 | 3A/3B定向和随机场景 | 新增 |
-| Makefile/filelist/package | Stage 2入口 | 增加Stage 3编译和回归入口 | 修改 |
+| 文件/组件 | Stage 3需要完成 |
+|---|---|
+| axi_types_pkg.sv | 增加DV路由枚举或tag公共类型，保持AXI ID宽度定义 |
+| axi_switch_ref_model.sv | 新增无状态地址译码和ID编解码模型 |
+| axi_req_item.sv | 保持id为完整AXI ID，不增加UVM sequence ID字段 |
+| axi_rsp_item.sv | 保持id为完整响应AXI ID |
+| axi_m_agent_cfg.sv | 支持max_read_outstanding/max_write_outstanding为1～4 |
+| axi_m_driver.sv | 三个按ID计数数组、多上下文、AW/AR限流、B/R按ID释放 |
+| axi_s_driver.sv | 接收按计划排序的多笔B/R response，继续完整burst发送 |
+| axi_m_monitor.sv | 多AW/W/AR/B/R上下文和按ID重建 |
+| axi_s_monitor.sv | 多AW/W/AR/B/R上下文和按ID重建 |
+| axi_protocol_assertions.sv | outstanding、ID关联、同ID顺序和Stage 3非交织检查 |
+| axi_outstanding_tracker.sv | 根据Monitor channel event独立维护按端口、方向和ID的观察计数 |
+| axi_s_sequencer.sv | request_fifo继续接收多笔完整request |
+| Stage 3 Master sequence | 生成多ID、多请求、相同ID和不同ID场景 |
+| Stage 3 reactive sequence | pending response计划池和B/R独立ID调度 |
+| stage3_e2e_checker.sv | 按ID比较请求/响应、ID转换、顺序、因果和结束状态 |
+| axi_env.sv/axi_env_cfg.sv | 例化、连接和选择Stage 3 Checker |
+| axi_env_pkg.sv | include新增model、context和checker |
+| axi_seq_pkg.sv | include Stage 3 sequence |
+| axi_test_pkg.sv | include Stage 3 tests |
+| sim/sim.f | 保持类型、interface、package、RTL、断言和tb编译顺序 |
+| sim/Makefile | 增加Stage 3回归和Stage 3断言自测入口 |
 
-## 12. S3-11：Outstanding上下文和公共对象
+## 14. S3-13：Switch reference model
 
-### 12.1 `axi_outstanding_context`
+### 14.1 定位
 
-新增参数化上下文对象，建议文件：
+axi_switch_ref_model是DV参考模型，不是接口Driver，不访问virtual interface，不保存arbiter状态。
 
-```text
-dv/env/axi_outstanding_context.sv
-```
+### 14.2 API要求
 
-上下文至少包含：
+模型至少提供：
 
-```text
-request快照句柄
-local_sequence_number
-aw_complete
-w_complete
-ar_complete
-b_complete
-r_complete
-response_beat_index
-```
+~~~systemverilog
+decode_address(addr);
+decode_w_target(id);
+master_to_tag(port_index);
+slave_to_tag(route);
+build_master_id(route, transaction_tag);
+encode_sid(master_index, route, original_id);
+decode_master(sid);
+restore_id(sid);
+~~~
 
-要求：
+### 14.3 使用者
 
-- 上下文只保存Driver、Monitor或Tracker自身拥有的clone，不共享跨组件可变对象。
-- `local_sequence_number`用于区分相同ID的多笔事务。
-- 不把Driver内部credit或semaphore句柄放入transaction。
-- 不向`axi_req_item`或`axi_rsp_item`增加只服务Driver调度的内部状态。
-- Monitor和Tracker可以使用同一上下文类型，但必须分别创建自己的实例，不能读取Driver上下文。
+- Master Stage 3 sequence使用decode_address和build_master_id生成合法request。
+- Stage 3 Checker独立计算预期路由和SID。
+- 定向测试可以使用encode_sid生成Slave reactive返回脚本。
+- Driver不得调用该模型修正sequence给出的ID。
+- Monitor不得调用该模型改写真实观察值。
 
-### 12.2 request和response item
+### 14.4 自检
 
-Stage 3原则上不增加协议字段：
+reference model必须有独立对象级测试，使用固定输入输出表验证，避免生成激励和Checker共同使用错误映射而互相掩盖。
 
-- `axi_req_item`已有ID、方向、burst和全部请求payload。
-- `axi_rsp_item`已有ID、LEN、响应payload和时序字段。
-- response reorder顺序由Stage 3 sequence的计划队列保存，不增加`response_rank`一类总线无关字段。
-- 如需要测试专用计划对象，应放在`dv/seq`并保持其不进入Monitor或Checker的actual路径。
+## 15. S3-14：Master Driver
 
-### 12.3 ID和索引
+### 15.1 状态替换
 
-- 上游Master按`ID_WIDTH`建立固定大小的每ID队列，索引范围为`0`到`(1<<ID_WIDTH)-1`。
-- 下游Slave按8-bit扩展ID建立上下文；当前定向范围只使用`8'h54`～`8'h57`。
-- Checker通过`{2'b01, 2'b01, original_id}`完成M0到S0 ID扩展。
-- 不使用ID值0作为内部“空”标记；上下文有效性使用队列大小或显式valid字段。
+删除Stage 2单事务运行限制：
 
-## 13. S3-12：Master Driver
-
-### 13.1 状态替换
-
-删除或停止使用Stage 2单事务状态：
-
-```text
+~~~text
 write_busy
 read_busy
-单一write_id
-单一read_id/read_len/read_beat_index
-```
+write_id
+read_id
+单一read_len
+单一read_beat_index
+~~~
 
 替换为：
 
-```text
-write_pending_queue
-read_pending_queue
-write_credit/read_credit
-write_by_id[]/read_by_id[]
+~~~text
+aw_outstanding_by_id[ID_COUNT]
+w_outstanding_by_id[ID_COUNT]
+ar_outstanding_by_id[ID_COUNT]
+
+write_context_by_id[id][$]
+read_context_by_id[id][$]
 active_r_context
-事务序号
-共享状态锁或单一状态owner
-```
+~~~
 
-### 13.2 AW/W fan-out
+内部上下文必须保存稳定request快照或引用Driver拥有的稳定context对象。
 
-- 只在写事务取得credit后把同一上下文放入AW和W mailbox。
-- AW worker只更新`aw_complete`。
-- W worker发送完整burst后更新`w_complete`。
-- AW和W谁先完成不影响上下文身份。
-- B接收路径只能释放一次上下文和一次credit。
+### 15.2 accept_items
 
-### 13.3 AR和R
+- reset释放后调用get_next_item。
+- 立即clone request。
+- 写request生成一个稳定写context，并将同一个context引用放入AW和W路径。
+- 读request生成一个稳定读context并放入AR路径。
+- 所有内部登记完成后调用一次item_done。
+- 不等待outstanding空位。
+- 不等待接口握手和响应。
 
-- 每个取得读credit的上下文进入AR mailbox。
-- AR握手完成后标记`ar_complete`。
-- R接收路径按RID取得队首并锁定活动burst。
-- RLAST后弹出、归还credit并清除活动上下文。
+### 15.3 AW发送
 
-### 13.4 错误报告
+- aw_queue取出context。
+- 等待write_outstanding小于上限。
+- 执行addr_delay。
+- 驱动完整AW payload。
+- stall期间锁定。
+- AW握手后登记该context的AW完成状态和按ID顺序。
+- 计数由唯一状态更新者增加。
 
-Driver只报告运行必需错误：
+### 15.4 W发送
 
-- cfg上限非法。
-- B/R找不到对应上下文。
-- 相同R burst中RID变化。
-- RLAST位置与请求LEN不符。
-- credit或上下文发生重复释放。
+- w_queue取出与AW路径共享的context。
+- 执行w_start_delay和逐beat wbeat_gap。
+- 完整burst连续发送，不切换WID。
+- WLAST握手后标记该context的W完成状态。
+- 计数由唯一状态更新者增加。
+- W路径不读取write_outstanding作为发送资格。
 
-普通payload端到端差异、DUT转发差异和响应顺序合法性由Monitor、Tracker和Checker检查，不在Driver重复实现。
+### 15.5 AR发送
 
-## 14. S3-13：Slave响应保存和调度
+- ar_queue取出context。
+- 等待read_outstanding小于上限。
+- 执行addr_delay。
+- 驱动完整AR payload。
+- AR握手后将context放入对应ARID FIFO。
+- 计数由唯一状态更新者增加。
 
-### 14.1 Stage 3 reactive sequence
+### 15.6 B接收
 
-新增Stage 3 reactive/scenario sequence，负责：
+- BREADY继续独立随机化。
+- B握手时使用BID选择write_context_by_id。
+- 队列为空时报关联错误。
+- 只允许消费队首。
+- 检查该context的W完成状态。
+- 检查BRESP合法。
+- 合法完成后弹出队首并减少AW/W计数。
+- 不调用item_done。
+- 不创建返回Master sequence的response。
 
-- 从`s_sequencer.request_fifo`取得真实完整request。
-- clone并按方向、扩展ID保存。
-- 根据定向ID脚本或随机非空ID选择请求队首。
-- 生成完整`axi_rsp_item`。
-- 保持同IDFIFO顺序。
-- 分别向Slave Driver提交B或R response item。
+### 15.7 R接收
 
-### 14.2 B/R并行
+- RREADY继续逐beat独立随机化。
+- 新burst第一拍使用RID选择read_context_by_id队首。
+- 保存为active_r_context。
+- 后续beat必须保持相同RID。
+- 使用该context的len检查beat索引和RLAST。
+- RLAST握手后弹出队首并减少AR计数。
+- 不调用item_done。
+- 不向Master sequence返回response。
 
-响应调度至少包含独立的write response和read response路径：
+### 15.8 状态更新所有权
 
-- write pending不阻塞read response生成。
-- read pending不阻塞write response生成。
-- 两条路径可以在同一测试中同时工作。
-- 两条路径对Slave sequencer的使用不得造成永久仲裁饥饿。
+outstanding数组只能由一个task或同步状态管理块写入。drive_aw、drive_w、drive_ar、receive_b和receive_r不得分别无协调地修改相同计数器。
 
-### 14.3 响应计划结束检查
+### 15.9 Reset
 
-每个Stage 3测试结束时确认：
+watch_reset清除：
 
-- 所有收集到的write request都有且只有一个B计划被消费。
-- 所有read request都有且只有一个完整R计划被消费。
-- 每IDpending队列为空。
-- 定向顺序脚本为空。
-- 没有为不存在的ID创建响应。
+- 三个outstanding数组。
+- 所有按IDcontext队列。
+- active_r_context。
+- AW/W/AR mailbox。
 
-## 15. S3-14：Master/Slave Monitor
+各通道task继续只负责自己驱动信号的reset值。
 
-### 15.1 共同原则
+## 16. S3-15：Slave reactive sequence和Slave Driver
 
-- 每次真实握手继续发布新的`axi_channel_event`。
-- analysis端保存对象时必须clone。
-- 同周期多通道事件先采样，再按照确定性状态更新规则处理。
-- 不依赖Driver内部准入顺序或sequence计划作为actual。
+### 16.1 Collector
 
-### 15.2 写request重建
+Stage 3 reactive sequence使用collector持续读取request_fifo：
 
-每个Monitor维护：
+- 完整写request转换为B response计划。
+- 完整读request转换为完整R response计划。
+- response计划保留完整8-bit request ID。
+- 按方向和ID放入pending队列。
+- 相同ID按request接受顺序排队。
 
-```text
-aw_by_id[id][$]
+### 16.2 B scheduler
+
+- 独立消费b_return_order。
+- 等待指定ID pending B队列非空。
+- 只弹出指定ID队首。
+- 填写rsp_delay和BRESP。
+- 通过Slave sequencer发送给Slave Driver。
+- 支持连续多个相同ID。
+
+### 16.3 R scheduler
+
+- 独立消费r_return_order。
+- 等待指定ID pending R队列非空。
+- 只弹出指定ID队首。
+- 生成完整len+1拍RDATA/RRESP。
+- 使用可区分的transaction base和beat index数据模式。
+- 填写rsp_delay和rbeat_gap[]。
+- 一个response item表示一个完整R burst。
+
+### 16.4 Collector和scheduler并行
+
+collector、B scheduler和R scheduler必须能够并行工作。scheduler等待尚未到达的脚本ID时不能阻止collector继续读取request_fifo。
+
+Slave sequencer仍只有一条seq_item请求通道。B/R scheduler向sequencer提交response item时必须通过统一send_response方法、semaphore或等价机制串行完成start_item/finish_item，不能由两个线程同时操作同一个sequence握手。该短暂串行只约束UVM item提交；Slave Driver在item_done前把B/R快照分别放入独立队列，因此不会阻止B和R接口并行发送。
+
+### 16.5 Slave Driver
+
+Slave Driver继续：
+
+- clone response item。
+- 写response进入b_queue。
+- 读response进入r_queue。
+- item_done不等待接口握手。
+- B和R使用独立发送task。
+- R response完整连续发送到RLAST。
+
+Stage 3的乱序选择在reactive scheduler完成；Slave Driver不重新排列已经收到的response item。
+
+## 17. S3-16：Master/Slave Monitor
+
+### 17.1 通用原则
+
+- Monitor只观察真实接口握手。
+- 每个握手发布一个新的channel event。
+- Monitor不读取Driver、sequence或Switch model的计划状态。
+- 保存对象时必须clone。
+
+### 17.2 写request重建
+
+两侧Monitor分别维护：
+
+~~~text
+aw_context_by_id[id][$]
 completed_w_by_id[id][$]
-write_wait_b_by_id[id][$]
-一个全局活动W burst重建器
-```
+active_w_burst
+~~~
 
-规则：
+- 每个AW握手保存完整地址上下文。
+- Stage 3不交织W，因此只需要一个active W burst。
+- WLAST后形成一个完整W burst上下文。
+- AW和完整W burst按完整ID及FIFO顺序配对。
+- 支持AW先、W先和多个AW等待W。
+- 每个完整写request只发布一次。
 
-- AW握手创建地址上下文并加入对应ID队列。
-- Stage 3不允许W交织，因此从第一个W beat到WLAST只维护一个活动W burst。
-- 完整W burst按照WID加入对应ID队列。
-- 当同ID的AW和完整W都存在时，各弹出队首并重建完整write request。
-- 完整request通过`req_ap`发布，同时clone到等待B的该ID队列。
-- 多个AW可以在前一B返回前完成。
-- W先于AW时先保存完整W burst，等待相同ID的AW。
+### 17.3 读request和R重建
 
-### 15.3 读request和response重建
+- 每个AR握手立即发布一个完整读request。
+- 同时按ARID保存读上下文FIFO。
+- 新R burst第一拍RID选择对应读上下文队首。
+- R burst期间锁定RID。
+- RLAST后发布一个完整读response并弹出读上下文。
 
-- 每个AR握手立即发布完整read request，并把上下文加入`read_wait_r_by_id[id]`。
-- 第一拍R根据RID取得对应ID队首并锁定活动R burst。
-- 后续beat必须保持RID。
-- RLAST时发布完整read response并弹出该ID队首。
-- 另一个ID的AR可以在当前R burst完成前已经存在。
+### 17.4 B重建
 
-### 15.4 B response重建
+- 每个B握手发布一个写response。
+- 使用BID关联对应写上下文队首。
+- 不要求全局B顺序与AW顺序相同。
 
-- B握手根据BID取得`write_wait_b_by_id[BID]`队首。
-- 队列为空报告孤立B。
-- 发布完整write response后弹出队首。
-- 同IDB顺序由队首规则保证，不同ID不要求全局顺序。
+### 17.5 Reset
 
-### 15.5 同周期处理顺序
+reset期间清除所有按IDFIFO、active burst和未完成配对，不发布event或完整item。
 
-Monitor在同一采样周期中不得因为源码`if`语句顺序把旧响应关联到同周期新请求。推荐：
+## 18. S3-17：协议断言
 
-1. 先创建本周期所有channel event并发布。
-2. 用周期开始前上下文处理B和R。
-3. 处理AW、W和AR的新请求状态。
-4. 执行本周期能够完成的AW/W配对。
+### 18.1 状态结构
 
-Checker不得依赖同周期analysis回调的先后顺序判断协议因果。
+axi_protocol_assertions必须从Stage 2单一AW/AR观察状态扩展为按ID状态：
 
-## 16. S3-15：Sequence、Sequencer、Agent和Cfg
+~~~text
+AW acceptance FIFO/state
+completed W state
+AR context FIFO/state
+active W burst
+active R burst
+per-ID outstanding counters
+~~~
 
-### 16.1 Master请求sequence
+### 18.2 职责边界
 
-Stage 3 sequence需要产生：
+断言负责：
 
-- 4个不同ID请求，写ID使用4～7。
-- 相同ID连续1～4笔请求。
-- 不同LEN、地址、数据基址和delay/gap以区分上下文。
-- 连续5笔请求用于容量阻塞测试。
-- 读写各4笔并行请求。
+- 握手级协议状态。
+- outstanding上下溢。
+- ID X/Z。
+- Stage 3非交织边界。
+- LAST和beat数量。
+- stall稳定性。
 
-sequence不等待Master Driver返回独立response。场景结束由Tracker和Checker的实际匹配计数判定。
+Checker负责：
 
-### 16.2 Stage 3场景协调
+- DUT上下游转发。
+- 4-bit/8-bit ID变换。
+- 完整request/response内容。
+- 不同ID乱序匹配。
+- 相同ID端到端顺序。
 
-新增`axi_stage3_scenario_sequence`作为公共场景基类，持有Master和Slave sequencer句柄并提供：
+Driver负责：
 
-```text
-send_write/send_read
-collect_write_request/collect_read_request
-send_next_b_by_id/send_next_r_by_id
-serve_b_order/serve_r_order
-等待指定实际匹配计数
-```
+- 运行所需的本地response关联和资源释放。
 
-具体场景sequence只配置请求集合、响应ID顺序、数据模式和时序，不复制公共发送实现。
+## 19. S3-18：Outstanding Tracker和stage3_e2e_checker
 
-### 16.3 Cfg
+### 19.1 Outstanding Tracker
 
-- 复用`max_read_outstanding/max_write_outstanding`。
-- 不向cfg加入每ID固定数组或测试脚本。
-- 响应顺序脚本属于具体sequence对象。
-- Stage 3 base test负责在run phase开始前设置Driver上限和READY generator。
-- Stage 1/2 base test继续使用上限1。
+新增参数化axi_outstanding_tracker。每个被观察接口使用与该接口ID宽度一致的tracker实例。
 
-### 16.4 Agent和Sequencer
+Tracker输入只来自Monitor channel_ap，收到对象后clone再处理。它至少维护：
 
-- Master sequencer类型不变。
-- Slave sequencer继续保留`request_fifo`。
-- Agent active/passive职责不变。
-- 不增加把Master和Slave永久绑定为一对的新Agent类型。
+~~~text
+aw_observed_by_id[id]
+wlast_observed_by_id[id]
+ar_observed_by_id[id]
+当前写、读outstanding总数
+观察到的最大写、读outstanding深度
+每个ID的请求和完成数量
+~~~
 
-## 17. S3-16：Outstanding Tracker和Stage 3 Checker
+状态更新规则与真实接口握手一致：
 
-### 17.1 `axi_outstanding_tracker`
+- AW event增加AW观察计数。
+- WLAST event增加W完成观察计数。
+- B event按BID减少AW/W观察计数。
+- AR event增加AR观察计数。
+- RLAST event按RID减少AR观察计数。
 
-Tracker是被动UVM组件，输入为单接口Monitor的`channel_ap`。建议为上游和下游各实例化一个参数化tracker。
+Tracker负责接口观察状态、下溢、深度和结束非空检查，不生成DUT expected transaction，不读取Driver内部数组。
 
-Tracker记录：
+### 19.2 Checker定位
 
-- 当前写/读实际outstanding总数。
-- 每ID写/读outstanding数量。
-- 历史最大写/读深度。
-- AW、B、AR、R和RLAST计数。
-- 每ID接受序号和完成序号。
-- 未完成上下文和活动R burst。
+stage3_e2e_checker用于M0到S0的多outstanding和响应乱序端到端检查。它不替代Stage 1/2 Checker，不实现三主三从仲裁和路由Scoreboard。
 
-Tracker检查：
+### 19.3 输入端口
 
-- 实际深度不超过配置上限。
-- 计数不下溢。
-- B/R存在对应请求。
-- 同ID完成顺序正确。
-- Stage 3不发生R beat交织。
-- 测试结束所有当前计数和上下文为0。
+至少接收：
 
-### 17.2 `stage3_e2e_checker`输入
+~~~text
+upstream_channel_export
+downstream_channel_export
+upstream_req_export
+downstream_req_export
+upstream_rsp_export
+downstream_rsp_export
+~~~
 
-输入保持六类TLM流：
+所有analysis对象clone后入队。
 
-```text
-upstream channel event
-downstream channel event
-upstream complete request
-downstream complete request
-upstream complete response
-downstream complete response
-```
+### 19.4 Request比较
 
-Checker收到对象后clone保存。Stage 3测试禁用Stage 1/2 Checker的单上下文检查，但Stage 1/2测试继续使用各自Checker。
+- 上游request按完整4-bit ID保存。
+- 下游request按完整8-bit SID保存。
+- 使用Switch reference model计算预期SID。
+- 相同ID请求按FIFO比较。
+- 不依赖B/R返回顺序决定request匹配。
+- 写request比较AW属性、W数据、WSTRB和LAST。
+- 读request比较AR属性。
 
-### 17.3 request比较
+### 19.5 Response比较
 
-- AW、W和AR正向转发仍比较上下游真实event。
-- write/read完整request按照方向、原始ID、扩展ID和同ID接受序号关联。
-- 比较地址、LEN、SIZE、BURST以及完整W数据和WSTRB。
-- 不比较delay/gap字段。
-- 不使用全局request FIFO强制不同ID同序；如果DUT保持请求顺序可以统计，但响应匹配不能依赖该假设。
+- 下游B/R response作为返回路径expected。
+- 上游B/R response作为actual。
+- 根据下游SID恢复4-bit ID。
+- 以恢复后的ID选择上游响应队列。
+- 不同ID可以以任意顺序比较。
+- 相同ID只比较各自队列队首。
+- R response比较len、每拍RDATA、RRESP和RLAST。
+- B response比较BRESP。
 
-### 17.4 response比较
+### 19.6 因果和顺序
 
-B响应：
+Checker必须确认：
 
-- 下游B response按扩展BID进入每IDexpected队列。
-- 上游B response按恢复后的BID进入每IDactual队列。
-- 比较同ID队首的RESP和ID转换。
-- 不同ID队列可以以任意全局顺序完成。
+- B关联一个完整下游写request。
+- R关联一个已接受下游读request。
+- 每个request只被一个response消费。
+- 相同ID完成顺序与接受顺序一致。
+- 不同ID发生逆序时不报全局FIFO错误。
+- B和R上下文独立。
 
-R响应：
+### 19.7 计数
 
-- 下游完整R burst按扩展RID进入每IDexpected队列。
-- 上游完整R burst按恢复RID进入每IDactual队列。
-- 比较LEN、全部RDATA、RRESP和RLAST结果。
-- 相同ID按队首比较，不同ID不要求全局FIFO。
+Checker至少统计：
 
-### 17.5 Checker不负责的内容
+~~~text
+AW/W/B/AR/R event数量
+完整写request数量
+完整读request数量
+完整写response数量
+完整读response数量
+每个ID的请求和响应数量
+观察到的最大读写outstanding深度
+不同ID逆序发生次数
+相同ID多笔发生次数
+~~~
 
-- Driver credit何时取得和归还。
-- READY generator产生的精确随机值。
-- delay/gap精确周期数。
-- VALID stall稳定性和X/Z；这些由断言负责。
-- 三主三从路由、跨端口仲裁和Default Slave。
-- beat级W/R交织。
-- 运行时reset清理。
+### 19.8 结束检查
 
-### 17.6 结束检查
+测试结束时确认：
 
-测试结束必须确认：
+- 所有event队列为空。
+- 所有完整request/response队列为空。
+- 所有按IDexpected/actual队列为空。
+- 没有未配对AW或完整W burst。
+- 没有未完成R burst。
+- 没有未匹配B/R。
+- Master Driver三个outstanding数组全为0。
+- upstream/downstream Outstanding Tracker所有观察计数全为0。
+- Slave request_fifo为空。
+- Slave response计划池为空。
+- response脚本全部消费。
+- 实际计数等于测试期望计数。
 
-- 上下游所有channel event比较队列为空。
-- 上下游每ID完整request/response队列为空。
-- 所有Tracker当前读写计数为0。
-- Driver所有credit已经归还。
-- Driver pending queue和按ID上下文为空。
-- Slave response plan和每IDpending队列为空。
-- Slave sequencer `request_fifo`为空。
-- 没有活动W/R burst。
-- 实际匹配计数等于测试期望事务数。
+## 20. S3-19：Env、Cfg和Checker选择
 
-## 18. S3-17：TLM和文件组织
+### 20.1 Checker使能
 
-### 18.1 Stage 3连接关系
+Stage 3多事务测试不能让Stage 1/2 Checker继续按旧单事务假设判定。
 
-```text
-Master request sequence
-        │ axi_req_item
-        ▼
-Master sequencer → Master Driver
-                       │ clone + pending
-                 ┌─────┴─────┐
-                 ▼           ▼
-             write admit   read admit
-              │ credit       │ credit
-          ┌───┴───┐          ▼
-          ▼       ▼          AR worker
-       AW worker W worker
-          │       │           │
-          └───────┴──── DUT ──┘
-                           │
-                           ▼
-                    Slave Monitor
-                           │ complete request
-                           ▼
-                 Slave request_fifo
-                           │
-                           ▼
-              Stage 3 response scheduler
-                    │ B plan   │ R plan
-                    ▼          ▼
-                 Slave Driver B/R workers
+环境必须支持明确选择当前Checker：
 
-Master Monitor channel/req/rsp ─┬─ stage3_e2e_checker
-Slave Monitor  channel/req/rsp ─┘
+- Stage 1测试启用Stage 1 Checker。
+- Stage 2测试启用Stage 2 Checker并关闭Stage 1 Checker。
+- Stage 3测试启用Stage 3 Checker并关闭Stage 1/2 Checker。
 
-Master Monitor channel ─ upstream outstanding tracker
-Slave Monitor  channel ─ downstream outstanding tracker
-```
+可以使用统一checker mode或各Checker enabled字段，但不得依赖测试直接修改未公开内部队列。
 
-### 18.2 文件组织
+### 20.2 Cfg
 
-新增文件建议：
+axi_m_agent_cfg中的：
 
-```text
-dv/env/axi_outstanding_context.sv
+~~~text
+max_write_outstanding
+max_read_outstanding
+~~~
+
+Stage 3默认设为4，允许测试配置1～4。
+
+response返回脚本属于Stage 3 reactive sequence或Stage 3 scenario配置，不放入通用agent cfg。
+
+### 20.3 S0-OPEN-01
+
+继续保持：
+
+- Master Driver不调用put_response。
+- Master sequence不调用get_response。
+- B/R完成由Driver内部状态和Monitor/Checker观察。
+- sequence_id/transaction_id不用于AXI ID关联。
+
+## 21. S3-20：文件和测试组织
+
+### 21.1 建议新增文件
+
+~~~text
+dv/env/axi_switch_ref_model.sv
 dv/env/axi_outstanding_tracker.sv
 dv/env/checker/stage3_e2e_checker.sv
 
 dv/seq/axi_stage3_scenario_seq.sv
 dv/seq/axi_stage3_outstanding_write_seq.sv
 dv/seq/axi_stage3_outstanding_read_seq.sv
-dv/seq/axi_stage3_capacity_limit_seq.sv
+dv/seq/axi_stage3_write_ooo_seq.sv
+dv/seq/axi_stage3_read_ooo_seq.sv
 dv/seq/axi_stage3_same_id_order_seq.sv
-dv/seq/axi_stage3_write_reorder_seq.sv
-dv/seq/axi_stage3_read_reorder_seq.sv
-dv/seq/axi_stage3_read_write_parallel_seq.sv
-dv/seq/axi_stage3_random_reorder_smoke_seq.sv
+dv/seq/axi_stage3_mixed_rw_seq.sv
+dv/seq/axi_s_stage3_reactive_seq.sv
 
 dv/tc/axi_stage3_base_test.sv
 dv/tc/axi_stage3_outstanding_write_test.sv
 dv/tc/axi_stage3_outstanding_read_test.sv
-dv/tc/axi_stage3_capacity_limit_test.sv
+dv/tc/axi_stage3_write_ooo_test.sv
+dv/tc/axi_stage3_read_ooo_test.sv
 dv/tc/axi_stage3_same_id_order_test.sv
-dv/tc/axi_stage3_write_reorder_test.sv
-dv/tc/axi_stage3_read_reorder_test.sv
-dv/tc/axi_stage3_read_write_parallel_test.sv
-dv/tc/axi_stage3_random_reorder_smoke_test.sv
+dv/tc/axi_stage3_mixed_rw_test.sv
+dv/tc/axi_stage3_id_mapping_test.sv
+dv/tc/axi_stage3_outstanding_stall_test.sv
 
 dv/tb/axi_stage3_protocol_assertions_selftest.sv
-```
+~~~
 
-### 18.3 需要修改的现有文件
+### 21.2 文件职责
 
-```text
-dv/env/master/axi_m_agent_cfg.sv
-dv/env/master/axi_m_driver.sv
-dv/env/master/axi_m_monitor.sv
-dv/env/slave/axi_s_monitor.sv
-dv/env/axi_protocol_assertions.sv
-dv/env/axi_env.sv
-dv/env/axi_env_pkg.sv
-dv/seq/axi_seq_pkg.sv
-dv/tc/axi_base_test.sv
-dv/tc/axi_test_pkg.sv
-dv/tb/tb.sv
-dv/doc/code_style.md
-sim/sim.f
-sim/Makefile
-```
-
-Slave Driver如现有B/R item FIFO能够正确保持sequence提交顺序且支持B/R并行，可不修改其核心发送逻辑。
-
-### 18.4 实施后的目录增量
-
-```text
-dv/
-├── env/
-│   ├── checker/
-│   │   ├── stage1_e2e_checker.sv
-│   │   ├── stage2_e2e_checker.sv
-│   │   └── stage3_e2e_checker.sv
-│   ├── axi_outstanding_context.sv
-│   ├── axi_outstanding_tracker.sv
-│   └── ... existing components
-├── seq/
-│   ├── axi_stage3_scenario_seq.sv
-│   ├── axi_stage3_outstanding_write_seq.sv
-│   ├── axi_stage3_outstanding_read_seq.sv
-│   ├── axi_stage3_capacity_limit_seq.sv
-│   ├── axi_stage3_same_id_order_seq.sv
-│   ├── axi_stage3_write_reorder_seq.sv
-│   ├── axi_stage3_read_reorder_seq.sv
-│   ├── axi_stage3_read_write_parallel_seq.sv
-│   └── axi_stage3_random_reorder_smoke_seq.sv
-├── tc/
-│   ├── axi_stage3_base_test.sv
-│   └── axi_stage3_*_test.sv
-└── tb/
-    ├── axi_stage3_protocol_assertions_selftest.sv
-    └── ... existing tb files
-```
-
-### 18.5 编译顺序
-
-- `axi_req_item`之后include `axi_outstanding_context`。
-- Driver/Monitor之前include context类型。
-- Tracker在`axi_channel_event`之后include。
-- `stage3_e2e_checker`在Monitor类型和公共对象之后include。
-- `axi_env`在全部Agent、Tracker和Checker之后include。
-- Stage 3公共scenario sequence先于具体Stage 3 sequence。
-- Stage 3 base test先于具体Stage 3 testcase。
-- `sim.f`继续只编译package入口，不重复单独编译被package include的类文件。
+- 可复用model、Driver、Monitor、断言和Checker放在dv/env。
+- Master和Slave sequence放在dv/seq。
+- 每个testcase单独放在dv/tc。
+- test只负责配置、脚本、启动sequence和等待统一结果。
+- tb只完成接口、DUT、断言和时钟reset连接。
+- 不向dv目录写入仿真生成物。
 
 # 第四部分：Stage 3验证和验收
 
-## 19. A3-01：Stage 3A代码审核
+## 22. A3-01：Stage 3A代码审核
 
-Stage 3A进入功能测试前必须满足：
+审核：
 
-- Driver不再使用单一`write_busy/read_busy`限制事务。
-- request clone、pending、credit和`item_done()`契约明确。
-- `dv/doc/code_style.md`已经同步Stage 3 pending准入和AW/W fan-out契约。
-- 读写准入线程互不阻塞。
-- 每ID队列从一开始用于Driver、Monitor、Tracker和Checker。
-- cfg上限1～4检查完成。
-- Monitor能够保存多个AW、AR和等待响应上下文。
-- Tracker和`stage3_e2e_checker`加入正确TLM连接。
-- 协议断言不再拒绝合法第二笔AW/AR。
-- Stage 2 Checker保持可用于旧回归。
-- 没有提前实现W/R beat交织、三主三从或复杂reset。
+- 只修改dv、sim和文档范围文件，rtl目录无修改。
+- 三个数组名称严格为aw_outstanding_by_id、w_outstanding_by_id和ar_outstanding_by_id。
+- mailbox保持无界。
+- 不存在write_slots_used/read_slots_used。
+- max outstanding范围为1～4。
+- 三个计数数组只有一个状态更新所有者。
+- Driver支持相同ID多笔上下文。
+- Monitor支持多个AW/AR和按IDresponse重建。
+- reactive侧B/R scheduler相互独立。
+- Stage 3 Checker按ID匹配，不使用全局response FIFO强制顺序。
+- Switch reference model不承担arbiter和Driver职责。
+- Master Driver不调用put_response。
+- 没有提前实现W/R交织和三主三从环境。
 
 工具门槛：
 
-```text
-QuestaSim 10.6c编译0 error
+~~~text
+Questa编译0 error
 elaboration 0 error
 无新增非预期warning
-```
+~~~
 
-## 20. A3-02：Stage 3A Outstanding深度测试
+## 23. A3-02：Outstanding验收
 
-分别对读写执行深度1、2、3、4：
+### 23.1 写方向
 
-- 请求握手数达到目标深度。
-- 最大实际深度等于目标深度。
-- 所有响应完成后回到0。
-- 每ID和全局计数一致。
-- 没有孤立响应、重复释放或遗留credit。
-- 深度1继续兼容Stage 2行为。
+- 深度1～4分别通过。
+- 四个不同ID达到深度4。
+- 同一ID四笔达到深度4。
+- 第5笔AW在满时不握手。
+- B释放后只允许对应数量的新AW进入。
+- AW/W计数按BID正确减少。
+- 测试结束数组归零。
 
-## 21. A3-03：Stage 3A容量阻塞和释放测试
+### 23.2 读方向
 
-- 配置上限4并发送5笔写请求，确认第5个AW在credit释放前不能握手。
-- 返回一个B后，第5个AW能够继续。
-- 配置上限4并发送5笔读请求，确认第5个AR在RLAST前不能握手。
-- 返回一个完整R burst后，第5个AR能够继续。
-- 写满期间读请求继续工作。
-- 读满期间写请求继续工作。
-- 同周期响应释放和其他地址握手时计数正确。
+- 深度1～4分别通过。
+- 四个不同ID达到深度4。
+- 同一ID四笔达到深度4。
+- 第5笔AR在满时不握手。
+- RLAST释放后只允许对应数量的新AR进入。
+- 非RLAST R beat不释放outstanding。
+- 测试结束数组归零。
 
-## 22. A3-04：Stage 3A同ID顺序测试
+### 23.3 同周期
 
-- 相同ID连续4笔写，B按请求顺序关联。
-- 相同ID连续4笔读，完整R burst按请求顺序关联。
-- 使用可区分地址、LEN、数据和响应结果证明不是仅比较ID。
-- 同ID队列深度达到4后正确回到0。
-- 不允许通过搜索同ID队列中间元素掩盖顺序错误。
+所有第7.4节同周期组合通过，无计数下溢、覆盖写入或上下文错配。
 
-Stage 3A全部通过后，才能进入不同ID乱序测试。
+## 24. A3-03：Out-of-order验收
 
-## 23. A3-05：Stage 3B不同ID乱序测试
+- 不同BID按预定义非FIFO顺序返回。
+- 不同RID完整burst按预定义非FIFO顺序返回。
+- 相同BID多笔保持AW接受顺序。
+- 相同RID多笔保持AR接受顺序。
+- 混合重复ID场景通过。
+- R burst内不切换RID。
+- W burst内不切换WID。
+- B和R乱序调度可以并行。
+- response stall期间选择保持稳定。
 
-- 4个不同写ID按逆序返回B。
-- 4个不同写ID按非简单交错脚本返回B。
-- 4个不同读ID按逆序返回完整R burst。
-- 4个不同读ID按非简单交错脚本返回完整R burst。
-- 上下游ID扩展和恢复正确。
-- 不同ID全局返回顺序变化不产生误报。
-- 相同ID队列仍严格FIFO。
-- R burst内部不发生RID切换。
+## 25. A3-04：ID验收
 
-## 24. A3-06：Stage 3B并行和Backpressure测试
+- S0四个Master ID全部覆盖。
+- 4'h4～4'h7分别正确扩展为8'h54～8'h57。
+- AW、W和AR三个请求通道映射全部正确。
+- B和R响应ID全部恢复正确。
+- Switch reference model单元测试通过。
+- Checker在不同ID乱序时仍使用当前SID正确恢复和关联。
 
-- 写4笔和读4笔同时在途。
-- B和R独立选择乱序响应并并行工作。
-- BREADY stall期间其他有credit的请求继续推进。
-- RREADY stall期间其他地址通道继续推进。
-- 已拉高VALID的B/R响应在stall期间不切换ID或payload。
-- B和RLAST同周期释放各自credit时计数正确。
-- 乱序、delay/gap和READY backpressure组合后全部上下文正确清空。
+## 26. A3-05：Monitor和Checker验收
 
-## 25. A3-07：Stage 3协议断言验收
+- 两侧Monitor支持至少4笔未完成request。
+- Outstanding Tracker在两侧接口按完整ID正确增加、释放并最终清空。
+- AW先、W先和多个AW等待W时重建正确。
+- 多AR等待R时重建正确。
+- 不同IDresponse乱序发布完整item。
+- 相同ID完整item顺序正确。
+- Stage 3 Checker每拍event、完整request和完整response全部匹配。
+- 所有结束pending状态为0。
+- Stage 1/2 Checker在Stage 3测试中不会按旧假设参与判定。
 
-正向Stage 1、Stage 2和Stage 3回归要求所有常驻协议断言零非预期失败。
+## 27. A3-06：协议断言验收
 
-独立Stage 3断言自测至少确认：
+正向回归要求：
 
-- 第二笔至第四笔合法AW/AR不会触发单outstanding误报。
-- 无上下文B/R能够触发因果断言。
-- WID/RID在活动burst中切换能够触发非交织断言。
-- 多事务环境中的stall payload变化能够触发稳定性断言。
-- WLAST/RLAST提前、缺失和beat过量继续能够触发。
-- 自测打印统一`AXI_STAGE3_ASSERT_SELFTEST_PASS`标记。
-- 预期触发全部命中且`unexpected_count==0`。
+- 所有Stage 3协议断言零非预期失败。
+- outstanding深度1～4均不误报。
+- 合法不同ID乱序不误报。
+- 合法相同ID顺序不误报。
+- 合法AW/W独立推进不误报。
 
-## 26. A3-08：Stage 3端到端测试清单
+负向自测要求：
 
-Stage 3建议建立以下独立testcase：
+- 第10.7节每个错误场景命中对应断言或状态检查。
+- 每种预期错误有唯一可识别标记。
+- 未出现额外非预期断言。
+- 最终打印AXI_STAGE3_ASSERT_SELFTEST_PASS。
 
-```text
+## 28. A3-07：端到端测试清单
+
+至少建立：
+
+~~~text
 axi_stage3_outstanding_write_test
 axi_stage3_outstanding_read_test
-axi_stage3_capacity_limit_test
+axi_stage3_write_ooo_test
+axi_stage3_read_ooo_test
 axi_stage3_same_id_order_test
-axi_stage3_write_reorder_test
-axi_stage3_read_reorder_test
-axi_stage3_read_write_parallel_test
-axi_stage3_random_reorder_smoke_test
-```
+axi_stage3_mixed_rw_test
+axi_stage3_id_mapping_test
+axi_stage3_outstanding_stall_test
+~~~
 
-继续回归：
+继续运行Stage 2七个正向测试和Stage 1两个单拍测试。
 
-```text
-axi_stage1_single_write_test
-axi_stage1_single_read_test
-axi_stage2_burst_write_test
-axi_stage2_burst_read_test
-axi_stage2_aw_w_order_test
-axi_stage2_delay_gap_test
-axi_stage2_channel_stall_test
-axi_stage2_read_write_parallel_test
-axi_stage2_ready_random_smoke_test
-```
+## 29. A3-08：统一通过条件
 
-每个testcase单独一个文件，只配置本场景的上限、READY策略、场景sequence、期望事务数和覆盖条件。
+每个Stage 3正向DUT测试必须满足：
 
-## 27. A3-09：端到端检查结果
+- 预期AW/W/B/AR/R握手数量全部匹配。
+- 最大outstanding深度达到测试目标且不超过配置。
+- Driver内部计数和Tracker真实接口观察计数达到一致的目标深度。
+- 三个outstanding数组结束时全为0。
+- 上游4-bit ID和下游8-bit SID映射全部正确。
+- 不同ID预定义response顺序实际发生。
+- 相同ID响应保持FIFO。
+- W/R burst数据、STRB、RESP和LAST一致。
+- 完整request/response内容一致。
+- 没有重复、遗漏或额外event。
+- 没有未完成上下文和active burst。
+- Slave request_fifo为空。
+- Slave response计划池和返回脚本为空。
+- 协议断言零非预期失败。
+- UVM_WARNING=0、UVM_ERROR=0、UVM_FATAL=0。
+- 测试打印统一PASS标记并正常退出。
 
-每个Stage 3正向测试必须满足：
+## 30. A3-09：运行入口和回归
 
-- 预期AW/W/B/AR/R握手和完整transaction计数全部匹配。
-- Tracker观察到的最大深度达到测试目标且不超过配置上限。
-- 上游4-bit ID正确扩展为下游8-bit ID。
-- 下游响应ID正确恢复为上游4-bit ID。
-- 相同ID按接受顺序完成。
-- 不同ID按照测试脚本完成预期乱序。
-- 所有W/R beat数据、STRB、RESP和LAST一致。
-- 没有额外、重复或遗漏event/transaction。
-- Driver credit全部归还，pending和每ID上下文为空。
-- Monitor、Tracker和Checker没有未完成上下文。
-- Slave request FIFO、响应计划和每IDpending队列为空。
-- 常驻协议断言零非预期失败。
-- `UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`。
-- 测试打印统一`AXI_TC_PASS`并正常退出。
+沿用当前QuestaSim入口并增加：
 
-## 28. A3-10：运行入口和回归要求
-
-沿用当前`sim`目录和QuestaSim入口，增加：
-
-```text
+~~~text
 cd sim
 make com
 make sim test=<testname>
-make stage3a_regress
-make stage3b_regress
 make stage3_regress
 make positive_regress
-make assertion_selftest
 make stage3_assertion_selftest
-```
+make assertion_selftest
+~~~
 
-目标定义：
+要求：
 
-- `stage3a_regress`运行Outstanding深度、容量和同ID顺序测试。
-- `stage3b_regress`运行写乱序、读乱序、读写并行和随机乱序测试。
-- `stage3_regress`连续运行全部Stage 3正向测试。
-- `positive_regress`连续运行Stage 1、Stage 2和Stage 3全部正向测试。
-- `stage3_assertion_selftest`只运行Stage 3负向断言支架，不混入正向回归。
+- stage3_regress连续运行全部Stage 3正向测试。
+- positive_regress连续运行Stage 1、Stage 2和Stage 3正向测试。
+- Stage 3负向断言自测不混入positive_regress。
+- 任一测试失败时回归命令返回非0。
+- 日志存放在sim/work/log。
+- 波形存放在sim/work/wave。
+- 覆盖率数据库如果启用，存放在sim/work。
 
-Makefile对每个正向测试日志必须检查：
-
-```text
-AXI_TC_PASS存在
-UVM_WARNING : 0
-UVM_ERROR   : 0
-UVM_FATAL   : 0
-```
-
-断言自测日志必须检查专用PASS标记和`unexpected_count==0`。仿真生成物继续放在：
-
-```text
-sim/work/log
-sim/work/wave
-sim/work/cov
-```
-
-不得向`dv`目录写入日志、波形、work library或覆盖率数据库。
-
-## 29. Stage 3完成条件
+## 31. Stage 3完成条件
 
 只有同时满足以下条件，Stage 3才能审核冻结：
 
-1. Stage 3A/3B所有组件代码完成并符合`dv/doc/code_style.md`。
-2. Questa编译和elaboration为0 error、0非预期warning。
-3. Driver读写独立credit和pending准入正确工作。
-4. 写和读实际outstanding深度分别覆盖1～4。
-5. 第5笔同方向请求在容量满时被阻塞，并在响应释放后继续。
-6. 写满不阻塞读，读满不阻塞写。
-7. 相同ID连续多事务严格按照接受顺序完成。
-8. 不同ID B响应乱序测试通过。
-9. 不同ID完整R burst乱序测试通过。
-10. Stage 3范围内没有W/R beat交织。
-11. Monitor能够重建所有多事务request/response。
-12. Tracker的总数、每ID数、最大深度和结束状态全部正确。
-13. `stage3_e2e_checker`的逐拍、完整事务、ID转换和乱序匹配全部通过。
-14. 乱序叠加delay/gap和BREADY/RREADY backpressure测试通过。
-15. 读写各4笔并行和B/R并行测试通过。
-16. 正向回归协议断言零失败，Stage 3负向断言自测通过。
-17. Stage 1和Stage 2全部正向回归继续通过。
-18. 所有测试结束Driver、Monitor、Tracker、Checker、Slave FIFO和响应计划无pending。
-19. 所有正向测试`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`。
-20. 没有提前实现Stage 4 beat交织、Stage 5复杂reset或Stage 6三主三从能力。
+1. Stage 3A所有组件代码完成并通过代码风格审核。
+2. RTL目录未被Stage 3修改。
+3. Questa编译和elaboration无错误。
+4. 读、写outstanding深度1～4全部通过。
+5. 三个指定outstanding数组按真实握手正确更新。
+6. 满深度时AW/AR停止发出，释放后恢复。
+7. 同周期增加和释放场景通过。
+8. 相同ID多笔事务严格保序。
+9. 不同ID的B响应乱序通过。
+10. 不同ID的完整R burst乱序通过。
+11. W/R保持Stage 3非交织边界。
+12. M0到S0四组ID映射和恢复全部通过。
+13. Switch reference model单元测试通过。
+14. 两侧Monitor多上下文重建通过。
+15. Outstanding Tracker的接口观察计数、最大深度和结束状态检查通过。
+16. stage3_e2e_checker的event、item、顺序、因果和结束检查通过。
+17. Stage 3正向协议断言零失败。
+18. Stage 3负向断言自测全部命中预期。
+19. Stage 1和Stage 2全部正向回归继续通过。
+20. S0-OPEN-01继续保留。
+21. 没有提前实现Stage 4交织、Stage 5复杂reset或Stage 6三主三从能力。
 
-## 30. 审核记录
-
-本节只记录实际实施和运行结果。当前工单尚未实施，不得预填“已通过”。
+## 32. 审核记录
 
 | 审核项 | 当前状态 | 说明 |
 |---|---|---|
-| Stage 2基线 | 已冻结 | Stage 3必须持续回归Stage 1/2现有用例 |
-| Stage 3范围 | 待实施 | M0到S0，读写分别最多4笔outstanding |
-| Stage 3A | 待实施 | credit、按ID上下文、有序响应和容量测试 |
-| Stage 3B | 待实施 | 不同ID B/R乱序及组合测试 |
-| Master response返回 | 已决策 | 继续保留`S0-OPEN-01`，不向Master sequence返回独立response |
-| 写ID范围 | 已决策 | M0到S0定向写使用ID 4～7，对应SID 0x54～0x57 |
-| Beat交织 | 后续Stage | W/R beat交织留到Stage 4 |
-| 复杂reset | 后续Stage | outstanding期间reset留到Stage 5 |
-| 三主三从 | 后续Stage | 完整端口扩展留到Stage 6 |
-| 代码与编译 | 未运行 | 实施后填写工具版本和编译结果 |
-| Stage 3A回归 | 未运行 | 实施后填写测试列表、结果和日志 |
-| Stage 3B回归 | 未运行 | 实施后填写测试列表、结果和日志 |
-| 断言自测 | 未运行 | 实施后填写预期命中和unexpected统计 |
-| 最终状态 | 未冻结 | 只有第29节全部满足后才能冻结 |
+| Stage 3范围 | 待实施 | M0到S0，多outstanding和不同ID响应乱序 |
+| RTL修改 | 禁止 | 本工单不修改rtl目录 |
+| Outstanding深度 | 待实施 | 读写分别1～4 |
+| Outstanding数组 | 待实施 | 使用三个冻结名称 |
+| mailbox容量 | 已冻结 | 保持无界，不计入AXI outstanding |
+| 相同ID顺序 | 待实施 | 每个ID独立FIFO |
+| 不同ID乱序 | 待实施 | B和完整R burst预定义顺序 |
+| W/R交织 | 不实施 | 留Stage 4 |
+| ID范围 | 已冻结 | M侧4'h4～4'h7，S侧8'h54～8'h57 |
+| Switch reference model | 待实施 | 只实现地址译码和ID编解码 |
+| Master sequence response | 继续保留限制 | 不调用put_response/get_response |
+| Reset范围 | 已冻结 | 只覆盖启动reset |
+| Stage 3 Checker | 待实施 | 按ID匹配多上下文 |
+| Outstanding Tracker | 待实施 | 只根据Monitor真实event维护独立观察计数 |
+| 协议断言 | 待实施 | outstanding、顺序、ID和非交织 |
+| 编译与仿真结果 | 未运行 | 实施完成后填写实际记录 |
 
-### 30.1 实际运行记录模板
+### 32.1 实际运行记录
 
-实施后按实际结果填写：
+Stage 3尚未实施。本节在代码和测试实际运行后填写：
 
-```text
-工具版本：
-代码版本/提交：
-编译命令和结果：
-Stage 3A测试列表和结果：
-Stage 3B测试列表和结果：
-Stage 1/2回归结果：
-断言自测结果：
-日志路径：
-波形路径：
-覆盖率路径：
-遗留问题：
-最终审核结论：
-```
+- 工具版本。
+- 实际修改文件。
+- 编译命令和结果。
+- Stage 3正向测试列表和结果。
+- Stage 1～3完整正向回归结果。
+- Stage 3断言自测结果。
+- 日志、波形和覆盖率路径。
+- 遗留限制和最终冻结结论。

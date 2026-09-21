@@ -49,6 +49,8 @@ module tb;
     .DATA_WIDTH  (AXI_DATA_WIDTH),
     .ID_WIDTH    (AXI_M_ID_WIDTH),
     .LEN_WIDTH   (AXI_LEN_WIDTH),
+    .MAX_OUTSTANDING(4),
+    .STAGE3_CHECKS(1'b1),
     .TB_IS_MASTER(1'b1)
   ) m_protocol_assertions (
     .ACLK   (m_if.ACLK),
@@ -72,6 +74,8 @@ module tb;
     .DATA_WIDTH  (AXI_DATA_WIDTH),
     .ID_WIDTH    (AXI_S_ID_WIDTH),
     .LEN_WIDTH   (AXI_LEN_WIDTH),
+    .MAX_OUTSTANDING(4),
+    .STAGE3_CHECKS(1'b1),
     .TB_IS_MASTER(1'b0)
   ) s_protocol_assertions (
     .ACLK   (s_if.ACLK),

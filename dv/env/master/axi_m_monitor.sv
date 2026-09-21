@@ -9,6 +9,7 @@ class axi_m_monitor #(
 ) extends uvm_monitor;
 
   localparam int unsigned DATA_BYTES = DATA_WIDTH / 8;
+  localparam int unsigned ID_COUNT   = 1 << ID_WIDTH;
 
   typedef axi_channel_event #(
     ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH
@@ -31,26 +32,16 @@ class axi_m_monitor #(
   uvm_analysis_port #(rsp_t) rsp_ap;
   longint unsigned sample_cycle;
 
-  bit aw_pending;
-  logic [ID_WIDTH-1:0] aw_id;
-  logic [ADDR_WIDTH-1:0] aw_addr;
-  logic [LEN_WIDTH-1:0] aw_len;
-  logic [2:0] aw_size;
-  logic [1:0] aw_burst;
-
-  bit w_active;
-  bit w_complete;
-  logic [ID_WIDTH-1:0] w_id;
-  logic [DATA_WIDTH-1:0] w_data_q[$];
-  logic [DATA_BYTES-1:0] w_strb_q[$];
-
-  bit read_pending;
-  logic [ID_WIDTH-1:0] read_id;
-  logic [LEN_WIDTH-1:0] read_len;
-  bit r_active;
-  logic [ID_WIDTH-1:0] r_id;
-  logic [DATA_WIDTH-1:0] r_data_q[$];
-  logic [1:0] r_resp_q[$];
+  req_t aw_context_by_id[ID_COUNT][$];
+  req_t completed_w_by_id[ID_COUNT][$];
+  req_t write_response_by_id[ID_COUNT][$];
+  req_t read_context_by_id[ID_COUNT][$];
+  req_t active_w_burst;
+  req_t active_r_context;
+  logic [DATA_WIDTH-1:0] active_w_data[$];
+  logic [DATA_BYTES-1:0] active_w_strb[$];
+  logic [DATA_WIDTH-1:0] active_r_data[$];
+  logic [1:0] active_r_resp[$];
 
   `uvm_component_param_utils(
     axi_m_monitor #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
@@ -62,11 +53,15 @@ class axi_m_monitor #(
   extern function void clear_write_state();
   extern function void clear_read_state();
   extern function event_t create_event(axi_channel_e channel);
-  extern function void publish_write_if_complete();
+  extern function req_t create_address_request(axi_dir_e dir);
+  extern function void publish_write_if_complete(int unsigned id);
+  extern function void capture_w_beat();
   extern function void publish_read_request();
   extern function void publish_b_response();
   extern function void capture_r_beat();
+  extern function int unsigned pending_count();
   extern virtual task run_phase(uvm_phase phase);
+  extern virtual function void check_phase(uvm_phase phase);
 
 endclass
 
@@ -93,27 +88,22 @@ function void axi_m_monitor::build_phase(uvm_phase phase);
 endfunction
 
 function void axi_m_monitor::clear_write_state();
-  aw_pending = 1'b0;
-  aw_id      = '0;
-  aw_addr    = '0;
-  aw_len     = '0;
-  aw_size    = '0;
-  aw_burst   = '0;
-  w_active   = 1'b0;
-  w_complete = 1'b0;
-  w_id       = '0;
-  w_data_q.delete();
-  w_strb_q.delete();
+  foreach (aw_context_by_id[id]) begin
+    aw_context_by_id[id].delete();
+    completed_w_by_id[id].delete();
+    write_response_by_id[id].delete();
+  end
+  active_w_burst = null;
+  active_w_data.delete();
+  active_w_strb.delete();
 endfunction
 
 function void axi_m_monitor::clear_read_state();
-  read_pending = 1'b0;
-  read_id      = '0;
-  read_len     = '0;
-  r_active     = 1'b0;
-  r_id         = '0;
-  r_data_q.delete();
-  r_resp_q.delete();
+  foreach (read_context_by_id[id])
+    read_context_by_id[id].delete();
+  active_r_context = null;
+  active_r_data.delete();
+  active_r_resp.delete();
 endfunction
 
 function axi_m_monitor::event_t axi_m_monitor::create_event(
@@ -128,67 +118,119 @@ function axi_m_monitor::event_t axi_m_monitor::create_event(
   return event_out;
 endfunction
 
-function void axi_m_monitor::publish_write_if_complete();
+function axi_m_monitor::req_t axi_m_monitor::create_address_request(
+  axi_dir_e dir
+);
   req_t req;
-
-  if (!aw_pending || !w_complete)
-    return;
-
-  if (aw_id !== w_id)
-    `uvm_error("AXI_M_MON_WID", "AWID and WID do not match")
-  if (w_data_q.size() != (int'(aw_len) + 1))
-    `uvm_error("AXI_M_MON_WCOUNT", $sformatf(
-      "Observed %0d W beats, expected %0d",
-      w_data_q.size(), int'(aw_len) + 1))
-
-  req = req_t::type_id::create("reconstructed_write_req");
-  req.dir           = AXI_WRITE;
-  req.id            = aw_id;
-  req.addr          = aw_addr;
-  req.len           = aw_len;
-  req.size          = aw_size;
-  req.burst         = axi_burst_e'(aw_burst);
-  req.addr_delay    = 0;
-  req.w_start_delay = 0;
-  req.wdata         = new[w_data_q.size()];
-  req.wstrb         = new[w_strb_q.size()];
-  req.wbeat_gap     = new[w_data_q.size()];
-  foreach (req.wdata[index]) begin
-    req.wdata[index]     = w_data_q[index];
-    req.wstrb[index]     = w_strb_q[index];
-    req.wbeat_gap[index] = 0;
-  end
-  req_ap.write(req);
-  clear_write_state();
-endfunction
-
-function void axi_m_monitor::publish_read_request();
-  req_t req;
-
-  if (read_pending)
-    `uvm_error("AXI_M_MON_AR", "Second AR arrived before RLAST")
-
-  req = req_t::type_id::create("reconstructed_read_req");
-  req.dir           = AXI_READ;
-  req.id            = vif.arid;
-  req.addr          = vif.araddr;
-  req.len           = vif.arlen;
-  req.size          = vif.arsize;
-  req.burst         = axi_burst_e'(vif.arburst);
+  req = req_t::type_id::create("address_context");
+  req.dir           = dir;
+  req.id            = (dir == AXI_WRITE) ? vif.awid : vif.arid;
+  req.addr          = (dir == AXI_WRITE) ? vif.awaddr : vif.araddr;
+  req.len           = (dir == AXI_WRITE) ? vif.awlen : vif.arlen;
+  req.size          = (dir == AXI_WRITE) ? vif.awsize : vif.arsize;
+  req.burst         = axi_burst_e'((dir == AXI_WRITE) ?
+                                   vif.awburst : vif.arburst);
   req.addr_delay    = 0;
   req.w_start_delay = 0;
   req.wdata         = new[0];
   req.wstrb         = new[0];
   req.wbeat_gap     = new[0];
-  req_ap.write(req);
+  return req;
+endfunction
 
-  read_pending = 1'b1;
-  read_id      = vif.arid;
-  read_len     = vif.arlen;
+function void axi_m_monitor::publish_write_if_complete(int unsigned id);
+  req_t address_context;
+  req_t data_context;
+  req_t response_context;
+
+  while ((aw_context_by_id[id].size() != 0) &&
+         (completed_w_by_id[id].size() != 0)) begin
+    address_context = aw_context_by_id[id].pop_front();
+    data_context    = completed_w_by_id[id].pop_front();
+
+    if (data_context.wdata.size() != (int'(address_context.len) + 1))
+      `uvm_error("AXI_M_MON_WCOUNT", $sformatf(
+        "Observed %0d W beats, expected %0d for ID 0x%0h",
+        data_context.wdata.size(), int'(address_context.len) + 1, id))
+
+    address_context.wdata     = new[data_context.wdata.size()];
+    address_context.wstrb     = new[data_context.wstrb.size()];
+    address_context.wbeat_gap = new[data_context.wdata.size()];
+    foreach (address_context.wdata[index]) begin
+      address_context.wdata[index]     = data_context.wdata[index];
+      address_context.wstrb[index]     = data_context.wstrb[index];
+      address_context.wbeat_gap[index] = 0;
+    end
+    req_ap.write(address_context);
+
+    if (!$cast(response_context, address_context.clone()))
+      `uvm_fatal("AXI_M_MON_CLONE", "Failed to clone write ctx")
+    write_response_by_id[id].push_back(response_context);
+  end
+endfunction
+
+function void axi_m_monitor::capture_w_beat();
+  req_t completed;
+  int unsigned id;
+
+  if (active_w_burst == null) begin
+    active_w_burst = req_t::type_id::create("active_w_burst");
+    active_w_burst.dir = AXI_WRITE;
+    active_w_burst.id  = vif.wid;
+  end
+  else if (vif.wid !== active_w_burst.id) begin
+    `uvm_error("AXI_M_MON_WID", "WID changed within a W burst")
+  end
+
+  active_w_data.push_back(vif.wdata);
+  active_w_strb.push_back(vif.wstrb);
+  if (vif.wlast !== 1'b1)
+    return;
+
+  active_w_burst.wdata     = new[active_w_data.size()];
+  active_w_burst.wstrb     = new[active_w_strb.size()];
+  active_w_burst.wbeat_gap = new[active_w_data.size()];
+  foreach (active_w_burst.wdata[index]) begin
+    active_w_burst.wdata[index]     = active_w_data[index];
+    active_w_burst.wstrb[index]     = active_w_strb[index];
+    active_w_burst.wbeat_gap[index] = 0;
+  end
+  if (!$cast(completed, active_w_burst.clone()))
+    `uvm_fatal("AXI_M_MON_CLONE", "Failed to clone completed W burst")
+  id = int'(active_w_burst.id);
+  completed_w_by_id[id].push_back(completed);
+  active_w_burst = null;
+  active_w_data.delete();
+  active_w_strb.delete();
+  publish_write_if_complete(id);
+endfunction
+
+function void axi_m_monitor::publish_read_request();
+  req_t req;
+  req_t ctx;
+  int unsigned id;
+
+  req = create_address_request(AXI_READ);
+  req_ap.write(req);
+  if (!$cast(ctx, req.clone()))
+    `uvm_fatal("AXI_M_MON_CLONE", "Failed to clone read ctx")
+  id = int'(req.id);
+  read_context_by_id[id].push_back(ctx);
 endfunction
 
 function void axi_m_monitor::publish_b_response();
   rsp_t rsp;
+  req_t completed;
+  int unsigned id;
+
+  id = int'(vif.bid);
+  if (write_response_by_id[id].size() == 0) begin
+    `uvm_error("AXI_M_MON_B", "B response has no complete write request")
+  end
+  else begin
+    completed = write_response_by_id[id].pop_front();
+  end
+
   rsp = rsp_t::type_id::create("reconstructed_write_rsp");
   rsp.dir        = AXI_WRITE;
   rsp.id         = vif.bid;
@@ -203,53 +245,73 @@ endfunction
 
 function void axi_m_monitor::capture_r_beat();
   rsp_t rsp;
+  req_t completed;
+  int unsigned id;
 
-  if (!r_active) begin
-    r_active = 1'b1;
-    r_id     = vif.rid;
+  id = int'(vif.rid);
+  if (active_r_context == null) begin
+    if (read_context_by_id[id].size() == 0) begin
+      `uvm_error("AXI_M_MON_R", "R burst has no pending AR ctx")
+      return;
+    end
+    active_r_context = read_context_by_id[id][0];
   end
-  else if (vif.rid !== r_id) begin
+  else if (vif.rid !== active_r_context.id) begin
     `uvm_error("AXI_M_MON_RID", "RID changed within an R burst")
   end
 
-  r_data_q.push_back(vif.rdata);
-  r_resp_q.push_back(vif.rresp);
-
+  active_r_data.push_back(vif.rdata);
+  active_r_resp.push_back(vif.rresp);
   if (vif.rlast !== 1'b1)
     return;
 
-  if (!read_pending)
-    `uvm_error("AXI_M_MON_R", "RLAST arrived without a pending read request")
-  else begin
-    if (r_id !== read_id)
-      `uvm_error("AXI_M_MON_RID", "R burst ID does not match ARID")
-    if (r_data_q.size() != (int'(read_len) + 1))
-      `uvm_error("AXI_M_MON_RCOUNT", $sformatf(
-        "Observed %0d R beats, expected %0d",
-        r_data_q.size(), int'(read_len) + 1))
-  end
+  if (active_r_data.size() != (int'(active_r_context.len) + 1))
+    `uvm_error("AXI_M_MON_RCOUNT", $sformatf(
+      "Observed %0d R beats, expected %0d",
+      active_r_data.size(), int'(active_r_context.len) + 1))
 
   rsp = rsp_t::type_id::create("reconstructed_read_rsp");
   rsp.dir        = AXI_READ;
-  rsp.id         = r_id;
-  rsp.len        = read_len;
+  rsp.id         = active_r_context.id;
+  rsp.len        = active_r_context.len;
   rsp.bresp      = AXI_RESP_OKAY;
-  rsp.rdata      = new[r_data_q.size()];
-  rsp.rresp      = new[r_resp_q.size()];
+  rsp.rdata      = new[active_r_data.size()];
+  rsp.rresp      = new[active_r_resp.size()];
   rsp.rsp_delay  = 0;
-  rsp.rbeat_gap  = new[(r_data_q.size() == 0) ? 0 : r_data_q.size() - 1];
+  rsp.rbeat_gap  = new[(active_r_data.size() == 0) ?
+                       0 : active_r_data.size() - 1];
   foreach (rsp.rdata[index]) begin
-    rsp.rdata[index] = r_data_q[index];
-    rsp.rresp[index] = axi_resp_e'(r_resp_q[index]);
+    rsp.rdata[index] = active_r_data[index];
+    rsp.rresp[index] = axi_resp_e'(active_r_resp[index]);
   end
   foreach (rsp.rbeat_gap[index])
     rsp.rbeat_gap[index] = 0;
   rsp_ap.write(rsp);
-  clear_read_state();
+
+  id = int'(active_r_context.id);
+  completed = read_context_by_id[id].pop_front();
+  active_r_context = null;
+  active_r_data.delete();
+  active_r_resp.delete();
+endfunction
+
+function int unsigned axi_m_monitor::pending_count();
+  int unsigned total;
+  total = (active_w_burst == null) ? 0 : 1;
+  total += (active_r_context == null) ? 0 : 1;
+  foreach (aw_context_by_id[id]) begin
+    total += aw_context_by_id[id].size();
+    total += completed_w_by_id[id].size();
+    total += write_response_by_id[id].size();
+    total += read_context_by_id[id].size();
+  end
+  return total;
 endfunction
 
 task axi_m_monitor::run_phase(uvm_phase phase);
   event_t event_out;
+  req_t address_context;
+  int unsigned id;
 
   forever begin
     @(posedge vif.ACLK);
@@ -270,15 +332,10 @@ task axi_m_monitor::run_phase(uvm_phase phase);
         event_out.burst_raw = vif.awburst;
         channel_ap.write(event_out);
 
-        if (aw_pending)
-          `uvm_error("AXI_M_MON_AW", "Second AW arrived before reconstruction")
-        aw_pending = 1'b1;
-        aw_id      = vif.awid;
-        aw_addr    = vif.awaddr;
-        aw_len     = vif.awlen;
-        aw_size    = vif.awsize;
-        aw_burst   = vif.awburst;
-        publish_write_if_complete();
+        address_context = create_address_request(AXI_WRITE);
+        id = int'(address_context.id);
+        aw_context_by_id[id].push_back(address_context);
+        publish_write_if_complete(id);
       end
 
       if ((vif.wvalid === 1'b1) && (vif.wready === 1'b1)) begin
@@ -288,21 +345,7 @@ task axi_m_monitor::run_phase(uvm_phase phase);
         event_out.strb = vif.wstrb;
         event_out.last = vif.wlast;
         channel_ap.write(event_out);
-
-        if (w_complete)
-          `uvm_error("AXI_M_MON_W", "W beat arrived after WLAST")
-        if (!w_active) begin
-          w_active = 1'b1;
-          w_id     = vif.wid;
-        end
-        else if (vif.wid !== w_id) begin
-          `uvm_error("AXI_M_MON_WID", "WID changed within a W burst")
-        end
-        w_data_q.push_back(vif.wdata);
-        w_strb_q.push_back(vif.wstrb);
-        if (vif.wlast === 1'b1)
-          w_complete = 1'b1;
-        publish_write_if_complete();
+        capture_w_beat();
       end
 
       if ((vif.bvalid === 1'b1) && (vif.bready === 1'b1)) begin
@@ -336,5 +379,12 @@ task axi_m_monitor::run_phase(uvm_phase phase);
     end
   end
 endtask
+
+function void axi_m_monitor::check_phase(uvm_phase phase);
+  super.check_phase(phase);
+  if (pending_count() != 0)
+    `uvm_error("AXI_M_MON_PENDING", $sformatf(
+      "Master Monitor ended with %0d pending contexts", pending_count()))
+endfunction
 
 `endif
