@@ -1432,7 +1432,7 @@ make assertion_selftest
 只有同时满足以下条件，Stage 3才能审核冻结：
 
 1. Stage 3A所有组件代码完成并通过代码风格审核。
-2. RTL目录未被Stage 3修改。
+2. 除审核批准的`rtl/reorder.v`完整SID匹配修复外，Stage 3未修改其他RTL；该例外必须记录在第32节并保留独立debug记录。
 3. Questa编译和elaboration无错误。
 4. 读、写outstanding深度1～4全部通过。
 5. 三个指定outstanding数组按真实握手正确更新。
@@ -1457,32 +1457,46 @@ make assertion_selftest
 
 | 审核项 | 当前状态 | 说明 |
 |---|---|---|
-| Stage 3范围 | 待实施 | M0到S0，多outstanding和不同ID响应乱序 |
-| RTL修改 | 禁止 | 本工单不修改rtl目录 |
-| Outstanding深度 | 待实施 | 读写分别1～4 |
-| Outstanding数组 | 待实施 | 使用三个冻结名称 |
-| mailbox容量 | 已冻结 | 保持无界，不计入AXI outstanding |
-| 相同ID顺序 | 待实施 | 每个ID独立FIFO |
-| 不同ID乱序 | 待实施 | B和完整R burst预定义顺序 |
+| Stage 3范围 | 审核通过 | M0到S0，多outstanding和不同ID响应乱序均已实施并验证 |
+| RTL修改 | 已批准例外 | 仅修改`rtl/reorder.v`，修复完整SID匹配错误；其他RTL不属于Stage 3修改范围 |
+| Outstanding深度 | 审核通过 | 读写深度1～4全部通过，满深度stall和释放恢复通过 |
+| Outstanding数组 | 审核通过 | 使用`aw_outstanding_by_id`、`w_outstanding_by_id`和`ar_outstanding_by_id` |
+| mailbox容量 | 审核通过 | 保持无界，不计入AXI outstanding |
+| 相同ID顺序 | 审核通过 | 每个ID独立FIFO，同ID多笔事务顺序检查通过 |
+| 不同ID乱序 | 审核通过 | B和完整R burst预定义非FIFO顺序通过 |
 | W/R交织 | 不实施 | 留Stage 4 |
-| ID范围 | 已冻结 | M侧4'h4～4'h7，S侧8'h54～8'h57 |
-| Switch reference model | 待实施 | 只实现地址译码和ID编解码 |
-| Master sequence response | 继续保留限制 | 不调用put_response/get_response |
-| Reset范围 | 已冻结 | 只覆盖启动reset |
-| Stage 3 Checker | 待实施 | 按ID匹配多上下文 |
-| Outstanding Tracker | 待实施 | 只根据Monitor真实event维护独立观察计数 |
-| 协议断言 | 待实施 | outstanding、顺序、ID和非交织 |
-| 编译与仿真结果 | 未运行 | 实施完成后填写实际记录 |
+| ID范围 | 审核通过 | M侧4'h4～4'h7，S侧8'h54～8'h57，映射和恢复测试通过 |
+| Switch reference model | 审核通过 | 地址译码和ID编解码已实现，独立自测通过 |
+| Master sequence response | 保留限制 | 不调用`put_response/get_response`，S0-OPEN-01继续保留 |
+| Reset范围 | 边界保持 | 只覆盖启动reset，复杂reset留Stage 5 |
+| Stage 3 Checker | 审核通过 | 按ID匹配多上下文，event、item、顺序、因果和结束检查通过 |
+| Outstanding Tracker | 审核通过 | 根据Monitor真实event维护，上下游计数、最大深度和结束清空检查通过 |
+| 协议断言 | 审核通过 | outstanding、顺序、ID和非交织正向零失败，负向自测通过 |
+| 编译与仿真结果 | 审核通过 | 编译和elaboration为0 error、0 warning；Stage 1～3正向回归17/17通过 |
+| 范围外文件 | 已排除 | `de/arbiter.v`不属于Stage 3，不进入`sim/sim.f`、Stage 3回归或冻结基线 |
 
 ### 32.1 实际运行记录
 
-Stage 3尚未实施。本节在代码和测试实际运行后填写：
+审核日期：2026-09-27。
 
-- 工具版本。
-- 实际修改文件。
-- 编译命令和结果。
-- Stage 3正向测试列表和结果。
-- Stage 1～3完整正向回归结果。
-- Stage 3断言自测结果。
-- 日志、波形和覆盖率路径。
-- 遗留限制和最终冻结结论。
+- 工具版本：QuestaSim-64 10.6c。
+- 主要交付：Switch reference model、Outstanding Tracker、Stage 3 Checker、Master Driver多outstanding状态、Slave reactive response计划、Monitor多上下文重建、Stage 3协议断言、8个Stage 3端到端测试及Makefile回归入口。
+- 编译和elaboration：执行`make clean com stage3_elab`，结果为0 error、0 warning。
+- Stage 3正向回归：执行`make stage3_regress dump=0 cov=0`，第28节列出的8个测试全部通过，所有测试均为`UVM_WARNING=0`、`UVM_ERROR=0`、`UVM_FATAL=0`。
+- 完整正向回归：执行`make positive_regress dump=0 cov=0`，Stage 1为2/2、Stage 2为7/7、Stage 3为8/8，共17/17通过。
+- Stage 3负向断言自测：执行`make stage3_assertion_selftest`，打印`AXI_STAGE3_ASSERT_SELFTEST_PASS`。
+- 原有断言自测：执行`make assertion_selftest`，打印`AXI_ASSERT_SELFTEST_PASS`。
+- Switch reference model自测：执行`make stage3_switch_model_selftest`，打印`AXI_SWITCH_MODEL_SELFTEST_PASS`。
+- 输出路径：日志位于`sim/work/log`，波形位于`sim/work/wave`；本次冻结审核使用`cov=0`，Stage 3不要求最终functional coverage collector。
+
+### 32.2 RTL范围例外
+
+Stage 3原始实施边界是不修改RTL。`axi_stage3_read_ooo_test`在同一Master、同一Slave、不同ID乱序返回场景中发现`RVALID=1`而`RREADY=0`并最终timeout。定位确认旧`reorder`将SID高、低四位分别实施唯一优先匹配，错误阻塞了位于outstanding buffer非首位的合法完整SID。
+
+经审核授权后，仅对`rtl/reorder.v`进行范围例外修改：删除高、低四位独立优先匹配，改为候选SID与4个buffer条目进行完整8-bit比较，任一完整匹配即允许通过。该修复记录在提交`086675f`和`dv/doc/debug_rtl.md`中；修复后`axi_stage3_read_ooo_test`及Stage 1～3完整正向回归全部通过。除该文件外，Stage 3未批准其他RTL修改。
+
+### 32.3 范围排除和冻结结论
+
+- `de/arbiter.v`与Stage 3无关，明确排除在Stage 3任务范围、编译清单、回归结果和冻结基线之外；本工单不审核、修改或处置该文件。
+- Stage 3保持M0到S0、最大outstanding为4、W/R非交织、仅启动reset的能力边界，不提前实现Stage 4～6内容。
+- Stage 3功能实现和验证验收通过，具备冻结条件。正式冻结基线应包含本节记录及相关Stage 3代码，并以审核后的提交或标签固化；不得包含`de/arbiter.v`。

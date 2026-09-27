@@ -11,13 +11,13 @@ class axi_stage2_read_write_parallel_sequence
   endfunction
 
   virtual task body();
-    aw_latency.configure_fixed(0);
-    w_start_latency.configure_fixed(0);
-    w_gap_latency.configure_fixed(1);
-    ar_latency.configure_fixed(0);
-    b_latency.configure_fixed(2);
-    r_latency.configure_fixed(2);
-    r_gap_latency.configure_fixed(4);
+    randomize_fixed_latency(aw_latency, 0);
+    randomize_fixed_latency(w_start_latency, 0);
+    randomize_fixed_latency(w_gap_latency, 1);
+    randomize_fixed_latency(ar_latency, 0);
+    randomize_fixed_latency(b_latency, 2);
+    randomize_fixed_latency(r_latency, 2);
+    randomize_fixed_latency(r_gap_latency, 4);
 
     fork
       serve_responses(2, 32'h7500_0000);

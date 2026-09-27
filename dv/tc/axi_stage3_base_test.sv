@@ -8,17 +8,6 @@ class axi_stage3_base_test extends axi_base_test;
   extern function new(string name = "axi_stage3_base_test",
                       uvm_component parent = null);
   extern virtual function void build_phase(uvm_phase phase);
-  extern function void configure_ready_fixed(
-    int unsigned aw_delay,
-    int unsigned w_delay,
-    int unsigned ar_delay,
-    int unsigned b_delay,
-    int unsigned r_delay
-  );
-  extern function void configure_ready_random(
-    int unsigned minimum,
-    int unsigned maximum
-  );
   extern task start_stage3_scenario(axi_stage3_scenario_sequence scenario);
   extern task wait_for_stage3_counts(
     int unsigned write_count,
@@ -51,31 +40,6 @@ function void axi_stage3_base_test::build_phase(uvm_phase phase);
     env_cfg.m_cfg[0].request_prefetch_enabled = 1'b1;
   end
   super.build_phase(phase);
-endfunction
-
-function void axi_stage3_base_test::configure_ready_fixed(
-  int unsigned aw_delay,
-  int unsigned w_delay,
-  int unsigned ar_delay,
-  int unsigned b_delay,
-  int unsigned r_delay
-);
-  env.s_agents[0].driver.awready_latency.configure_fixed(aw_delay);
-  env.s_agents[0].driver.wready_latency.configure_fixed(w_delay);
-  env.s_agents[0].driver.arready_latency.configure_fixed(ar_delay);
-  env.m_agents[0].driver.bready_latency.configure_fixed(b_delay);
-  env.m_agents[0].driver.rready_latency.configure_fixed(r_delay);
-endfunction
-
-function void axi_stage3_base_test::configure_ready_random(
-  int unsigned minimum,
-  int unsigned maximum
-);
-  env.s_agents[0].driver.awready_latency.configure_random(minimum, maximum);
-  env.s_agents[0].driver.wready_latency.configure_random(minimum, maximum);
-  env.s_agents[0].driver.arready_latency.configure_random(minimum, maximum);
-  env.m_agents[0].driver.bready_latency.configure_random(minimum, maximum);
-  env.m_agents[0].driver.rready_latency.configure_random(minimum, maximum);
 endfunction
 
 task axi_stage3_base_test::start_stage3_scenario(

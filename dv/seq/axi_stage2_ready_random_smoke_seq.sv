@@ -11,13 +11,13 @@ class axi_stage2_ready_random_smoke_sequence
   endfunction
 
   virtual task body();
-    aw_latency.configure_random(0, 10);
-    w_start_latency.configure_random(0, 10);
-    w_gap_latency.configure_random(0, 10);
-    ar_latency.configure_random(0, 10);
-    b_latency.configure_random(0, 10);
-    r_latency.configure_random(0, 10);
-    r_gap_latency.configure_random(0, 10);
+    randomize_random_latency(aw_latency, 0, 10);
+    randomize_random_latency(w_start_latency, 0, 10);
+    randomize_random_latency(w_gap_latency, 0, 10);
+    randomize_random_latency(ar_latency, 0, 10);
+    randomize_random_latency(b_latency, 0, 10);
+    randomize_random_latency(r_latency, 0, 10);
+    randomize_random_latency(r_gap_latency, 0, 10);
 
     fork
       serve_responses(16, 32'h7600_0000);

@@ -38,6 +38,15 @@ class axi_stage2_scenario_sequence extends uvm_sequence;
   `uvm_object_utils(axi_stage2_scenario_sequence)
 
   extern function new(string name = "axi_stage2_scenario_sequence");
+  extern function void randomize_fixed_latency(
+    latency_gen generator,
+    int unsigned delay_cycles
+  );
+  extern function void randomize_random_latency(
+    latency_gen generator,
+    int unsigned minimum,
+    int unsigned maximum
+  );
   extern task send_write(
     bit [AXI_M_ID_WIDTH-1:0] id,
     bit [AXI_ADDR_WIDTH-1:0] addr,
@@ -66,6 +75,8 @@ endclass
 function axi_stage2_scenario_sequence::new(
   string name = "axi_stage2_scenario_sequence"
 );
+  latency_gen generators[7];
+
   super.new(name);
   aw_latency      = latency_gen::type_id::create("aw_latency");
   w_start_latency = latency_gen::type_id::create("w_start_latency");
@@ -74,6 +85,48 @@ function axi_stage2_scenario_sequence::new(
   b_latency       = latency_gen::type_id::create("b_latency");
   r_latency       = latency_gen::type_id::create("r_latency");
   r_gap_latency   = latency_gen::type_id::create("r_gap_latency");
+
+  generators[0] = aw_latency;
+  generators[1] = w_start_latency;
+  generators[2] = w_gap_latency;
+  generators[3] = ar_latency;
+  generators[4] = b_latency;
+  generators[5] = r_latency;
+  generators[6] = r_gap_latency;
+  foreach (generators[index])
+    randomize_fixed_latency(generators[index], 0);
+endfunction
+
+function void axi_stage2_scenario_sequence::randomize_fixed_latency(
+  latency_gen generator,
+  int unsigned delay_cycles
+);
+  generator.fixed_delay = delay_cycles;
+  generator.mode.rand_mode(1);
+  if (!generator.randomize() with {
+    mode == LAT_MODE_FIXED;
+  })
+    `uvm_fatal("AXI_STAGE2_LATENCY", "Failed to randomize fixed latency")
+  generator.mode.rand_mode(0);
+endfunction
+
+function void axi_stage2_scenario_sequence::randomize_random_latency(
+  latency_gen generator,
+  int unsigned minimum,
+  int unsigned maximum
+);
+  generator.mode.rand_mode(1);
+  generator.min_delay.rand_mode(1);
+  generator.max_delay.rand_mode(1);
+  if (!generator.randomize() with {
+    mode      == LAT_MODE_RANDOM;
+    min_delay == local::minimum;
+    max_delay == local::maximum;
+  })
+    `uvm_fatal("AXI_STAGE2_LATENCY", "Failed to randomize latency range")
+  generator.mode.rand_mode(0);
+  generator.min_delay.rand_mode(0);
+  generator.max_delay.rand_mode(0);
 endfunction
 
 task axi_stage2_scenario_sequence::send_write(

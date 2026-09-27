@@ -10,13 +10,13 @@ class axi_stage2_channel_stall_sequence extends axi_stage2_scenario_sequence;
   endfunction
 
   virtual task body();
-    aw_latency.configure_fixed(0);
-    w_start_latency.configure_fixed(0);
-    w_gap_latency.configure_fixed(0);
-    ar_latency.configure_fixed(0);
-    b_latency.configure_fixed(0);
-    r_latency.configure_fixed(0);
-    r_gap_latency.configure_fixed(0);
+    randomize_fixed_latency(aw_latency, 0);
+    randomize_fixed_latency(w_start_latency, 0);
+    randomize_fixed_latency(w_gap_latency, 0);
+    randomize_fixed_latency(ar_latency, 0);
+    randomize_fixed_latency(b_latency, 0);
+    randomize_fixed_latency(r_latency, 0);
+    randomize_fixed_latency(r_gap_latency, 0);
 
     fork
       serve_responses(2, 32'h7400_0000);
