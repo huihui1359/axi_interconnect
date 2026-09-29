@@ -27,5 +27,8 @@ package axi_seq_pkg;
   `include "axi_stage3_mixed_rw_seq.sv"
   `include "axi_stage3_id_mapping_seq.sv"
   `include "axi_stage3_outstanding_stall_seq.sv"
+  `include "axi_s_stage6_reactive_seq.sv"
+  `include "axi_stage6_base_vseq.sv"
+  `include "axi_stage6_vseqs.sv"
 
 endpackage

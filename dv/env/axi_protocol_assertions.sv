@@ -10,7 +10,9 @@ module axi_protocol_assertions #(
   int unsigned LEN_WIDTH        = 4,
   int unsigned MAX_OUTSTANDING  = 4,
   bit          TB_IS_MASTER     = 1'b1,
-  bit          STAGE3_CHECKS    = 1'b0
+  bit          STAGE3_CHECKS    = 1'b0,
+  bit          STAGE6_CHECKS    = 1'b0,
+  int unsigned PORT_INDEX       = 0
 ) (
   input logic ACLK,
   input logic ARESETn,
@@ -94,6 +96,13 @@ module axi_protocol_assertions #(
     if ($isunknown(id))
       return 1'b0;
     id_value = longint'(id);
+    if (STAGE6_CHECKS && (ID_WIDTH == 4))
+      return (((id_value >> 2) & 2'b11) != 2'b00);
+    if (STAGE6_CHECKS && (ID_WIDTH == 8))
+      return ((((id_value >> 6) & 2'b11) == (PORT_INDEX + 1)) &&
+              (((id_value >> 4) & 2'b11) != 2'b00) &&
+              (((id_value >> 2) & 2'b11) ==
+               ((id_value >> 6) & 2'b11)));
     if (ID_WIDTH == 4)
       return ((id_value >> 2) & 2'b11) == 2'b01;
     if (ID_WIDTH == 8)
@@ -110,6 +119,8 @@ module axi_protocol_assertions #(
     if ($isunknown(id))
       return 1'b0;
     id_value = longint'(id);
+    if (STAGE6_CHECKS && (ID_WIDTH == 8))
+      return (((id_value >> 4) & 2'b11) != 2'b00);
     if (ID_WIDTH == 8)
       return ((id_value >> 4) & 2'b11) == 2'b01;
     return 1'b1;
@@ -125,6 +136,27 @@ module axi_protocol_assertions #(
     if (ID_WIDTH == 8)
       return (((id_value >> 6) & 2'b11) ==
               ((id_value >> 2) & 2'b11));
+    return 1'b1;
+  endfunction
+
+  function automatic bit id_matches_address(
+    logic [ID_WIDTH-1:0] id,
+    logic [ADDR_WIDTH-1:0] address
+  );
+    logic [1:0] route_tag;
+    route_tag = 2'b00;
+    if (address inside {[32'h0000_0000:32'h0000_0fff]})
+      route_tag = 2'b01;
+    else if (address inside {[32'h0000_2000:32'h0000_2fff]})
+      route_tag = 2'b10;
+    else if (address inside {[32'h0000_4000:32'h0000_4fff]})
+      route_tag = 2'b11;
+    if (route_tag == 2'b00)
+      return 1'b1;
+    if (ID_WIDTH == 4)
+      return id[ID_WIDTH-1 -: 2] == route_tag;
+    if (ID_WIDTH == 8)
+      return id[ID_WIDTH-1 -: 2] == route_tag;
     return 1'b1;
   endfunction
 
@@ -254,6 +286,9 @@ module axi_protocol_assertions #(
               else report_assertion_error("AXI_ASSERT_AW_MASTER_TAG");
             assert (valid_stage3_slave_tag(awid))
               else report_assertion_error("AXI_ASSERT_AW_SLAVE_TAG");
+            if (STAGE6_CHECKS)
+              assert (id_matches_address(awid, awaddr))
+                else report_assertion_error("AXI_ASSERT_AW_ROUTE");
           end
         end
       end
@@ -321,6 +356,9 @@ module axi_protocol_assertions #(
               else report_assertion_error("AXI_ASSERT_AR_MASTER_TAG");
             assert (valid_stage3_slave_tag(arid))
               else report_assertion_error("AXI_ASSERT_AR_SLAVE_TAG");
+            if (STAGE6_CHECKS)
+              assert (id_matches_address(arid, araddr))
+                else report_assertion_error("AXI_ASSERT_AR_ROUTE");
           end
         end
       end

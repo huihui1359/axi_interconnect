@@ -34,10 +34,11 @@ typedef enum bit [2:0] {
   AXI_ROUTE_INVALID = 3'd7
 } axi_route_e;
 
-typedef enum bit [1:0] {
+typedef enum bit [2:0] {
   AXI_CHECKER_STAGE1,
   AXI_CHECKER_STAGE2,
-  AXI_CHECKER_STAGE3
+  AXI_CHECKER_STAGE3,
+  AXI_CHECKER_STAGE6
 } axi_checker_mode_e;
 
 typedef enum bit [2:0] {

@@ -16,12 +16,12 @@ class axi_m_single_write_seq #(
     ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH
   ) req_t;
 
-  bit [ID_WIDTH-1:0] id;
-  bit [ADDR_WIDTH-1:0] addr;
-  bit [2:0] size;
-  axi_burst_e burst;
-  bit [DATA_WIDTH-1:0] data;
-  bit [DATA_BYTES-1:0] strb;
+  rand bit [ID_WIDTH-1:0] id;
+  rand bit [ADDR_WIDTH-1:0] addr;
+  rand bit [2:0] size;
+  rand axi_burst_e burst;
+  rand bit [DATA_WIDTH-1:0] data;
+  rand bit [DATA_BYTES-1:0] strb;
 
   `uvm_object_param_utils(
     axi_m_single_write_seq #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)

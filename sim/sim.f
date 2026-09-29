@@ -23,7 +23,11 @@
 ../rtl/axi_interconnect.v
 
 ../dv/env/axi_protocol_assertions.sv
+../dv/env/axi_stage6_arbiter_assertions.sv
 ../dv/tb/axi_protocol_assertions_selftest.sv
 ../dv/tb/axi_stage3_protocol_assertions_selftest.sv
 ../dv/tb/axi_switch_ref_model_selftest.sv
+../dv/tb/axi_stage6_ref_model_selftest.sv
+../dv/tb/axi_stage6_protocol_assertions_selftest.sv
+../dv/tb/axi_stage6_arbiter_assertions_selftest.sv
 ../dv/tb/tb.sv

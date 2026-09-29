@@ -11,6 +11,7 @@ module tb;
   logic clk;
   logic rst_n;
   axi_env_cfg env_cfg;
+  axi_stage6_arbiter_bindings stage6_arbiter_bindings();
 
   initial begin
     clk = 1'b0;
@@ -29,7 +30,7 @@ module tb;
     .DATA_WIDTH(AXI_DATA_WIDTH),
     .ID_WIDTH  (AXI_M_ID_WIDTH),
     .LEN_WIDTH (AXI_LEN_WIDTH)
-  ) m_if (
+  ) m_if[AXI_DUT_NUM_MASTERS] (
     .ACLK   (clk),
     .ARESETn(rst_n)
   );
@@ -39,59 +40,9 @@ module tb;
     .DATA_WIDTH(AXI_DATA_WIDTH),
     .ID_WIDTH  (AXI_S_ID_WIDTH),
     .LEN_WIDTH (AXI_LEN_WIDTH)
-  ) s_if (
+  ) s_if[AXI_DUT_NUM_SLAVES] (
     .ACLK   (clk),
     .ARESETn(rst_n)
-  );
-
-  axi_protocol_assertions #(
-    .ADDR_WIDTH  (AXI_ADDR_WIDTH),
-    .DATA_WIDTH  (AXI_DATA_WIDTH),
-    .ID_WIDTH    (AXI_M_ID_WIDTH),
-    .LEN_WIDTH   (AXI_LEN_WIDTH),
-    .MAX_OUTSTANDING(4),
-    .STAGE3_CHECKS(1'b1),
-    .TB_IS_MASTER(1'b1)
-  ) m_protocol_assertions (
-    .ACLK   (m_if.ACLK),
-    .ARESETn(m_if.ARESETn),
-    .awid(m_if.awid), .awaddr(m_if.awaddr), .awlen(m_if.awlen),
-    .awsize(m_if.awsize), .awburst(m_if.awburst),
-    .awvalid(m_if.awvalid), .awready(m_if.awready),
-    .wid(m_if.wid), .wdata(m_if.wdata), .wstrb(m_if.wstrb),
-    .wlast(m_if.wlast), .wvalid(m_if.wvalid), .wready(m_if.wready),
-    .bid(m_if.bid), .bresp(m_if.bresp),
-    .bvalid(m_if.bvalid), .bready(m_if.bready),
-    .arid(m_if.arid), .araddr(m_if.araddr), .arlen(m_if.arlen),
-    .arsize(m_if.arsize), .arburst(m_if.arburst),
-    .arvalid(m_if.arvalid), .arready(m_if.arready),
-    .rid(m_if.rid), .rdata(m_if.rdata), .rresp(m_if.rresp),
-    .rlast(m_if.rlast), .rvalid(m_if.rvalid), .rready(m_if.rready)
-  );
-
-  axi_protocol_assertions #(
-    .ADDR_WIDTH  (AXI_ADDR_WIDTH),
-    .DATA_WIDTH  (AXI_DATA_WIDTH),
-    .ID_WIDTH    (AXI_S_ID_WIDTH),
-    .LEN_WIDTH   (AXI_LEN_WIDTH),
-    .MAX_OUTSTANDING(4),
-    .STAGE3_CHECKS(1'b1),
-    .TB_IS_MASTER(1'b0)
-  ) s_protocol_assertions (
-    .ACLK   (s_if.ACLK),
-    .ARESETn(s_if.ARESETn),
-    .awid(s_if.awid), .awaddr(s_if.awaddr), .awlen(s_if.awlen),
-    .awsize(s_if.awsize), .awburst(s_if.awburst),
-    .awvalid(s_if.awvalid), .awready(s_if.awready),
-    .wid(s_if.wid), .wdata(s_if.wdata), .wstrb(s_if.wstrb),
-    .wlast(s_if.wlast), .wvalid(s_if.wvalid), .wready(s_if.wready),
-    .bid(s_if.bid), .bresp(s_if.bresp),
-    .bvalid(s_if.bvalid), .bready(s_if.bready),
-    .arid(s_if.arid), .araddr(s_if.araddr), .arlen(s_if.arlen),
-    .arsize(s_if.arsize), .arburst(s_if.arburst),
-    .arvalid(s_if.arvalid), .arready(s_if.arready),
-    .rid(s_if.rid), .rdata(s_if.rdata), .rresp(s_if.rresp),
-    .rlast(s_if.rlast), .rvalid(s_if.rvalid), .rready(s_if.rready)
   );
 
   wire [AXI_M_ID_WIDTH-1:0] M_AXI_AWID[0:AXI_DUT_NUM_MASTERS-1];
@@ -164,115 +115,123 @@ module tb;
   wire S_AXI_RVALID[0:AXI_DUT_NUM_SLAVES-1];
   wire S_AXI_RREADY[0:AXI_DUT_NUM_SLAVES-1];
 
-  assign M_AXI_AWID[0]    = m_if.awid;
-  assign M_AXI_AWADDR[0]  = m_if.awaddr;
-  assign M_AXI_AWLEN[0]   = m_if.awlen;
-  assign M_AXI_AWSIZE[0]  = m_if.awsize;
-  assign M_AXI_AWBURST[0] = m_if.awburst;
-  assign M_AXI_AWVALID[0] = m_if.awvalid;
-  assign m_if.awready     = M_AXI_AWREADY[0];
-
-  assign M_AXI_WID[0]    = m_if.wid;
-  assign M_AXI_WDATA[0]  = m_if.wdata;
-  assign M_AXI_WSTRB[0]  = m_if.wstrb;
-  assign M_AXI_WLAST[0]  = m_if.wlast;
-  assign M_AXI_WVALID[0] = m_if.wvalid;
-  assign m_if.wready     = M_AXI_WREADY[0];
-
-  assign m_if.bid       = M_AXI_BID[0];
-  assign m_if.bresp     = M_AXI_BRESP[0];
-  assign m_if.bvalid    = M_AXI_BVALID[0];
-  assign M_AXI_BREADY[0] = m_if.bready;
-
-  assign M_AXI_ARID[0]    = m_if.arid;
-  assign M_AXI_ARADDR[0]  = m_if.araddr;
-  assign M_AXI_ARLEN[0]   = m_if.arlen;
-  assign M_AXI_ARSIZE[0]  = m_if.arsize;
-  assign M_AXI_ARBURST[0] = m_if.arburst;
-  assign M_AXI_ARVALID[0] = m_if.arvalid;
-  assign m_if.arready     = M_AXI_ARREADY[0];
-
-  assign m_if.rid       = M_AXI_RID[0];
-  assign m_if.rdata     = M_AXI_RDATA[0];
-  assign m_if.rresp     = M_AXI_RRESP[0];
-  assign m_if.rlast     = M_AXI_RLAST[0];
-  assign m_if.rvalid    = M_AXI_RVALID[0];
-  assign M_AXI_RREADY[0] = m_if.rready;
-
-  assign s_if.awid       = S_AXI_AWID[0];
-  assign s_if.awaddr     = S_AXI_AWADDR[0];
-  assign s_if.awlen      = S_AXI_AWLEN[0];
-  assign s_if.awsize     = S_AXI_AWSIZE[0];
-  assign s_if.awburst    = S_AXI_AWBURST[0];
-  assign s_if.awvalid    = S_AXI_AWVALID[0];
-  assign S_AXI_AWREADY[0] = s_if.awready;
-
-  assign s_if.wid       = S_AXI_WID[0];
-  assign s_if.wdata     = S_AXI_WDATA[0];
-  assign s_if.wstrb     = S_AXI_WSTRB[0];
-  assign s_if.wlast     = S_AXI_WLAST[0];
-  assign s_if.wvalid    = S_AXI_WVALID[0];
-  assign S_AXI_WREADY[0] = s_if.wready;
-
-  assign S_AXI_BID[0]    = s_if.bid;
-  assign S_AXI_BRESP[0]  = s_if.bresp;
-  assign S_AXI_BVALID[0] = s_if.bvalid;
-  assign s_if.bready     = S_AXI_BREADY[0];
-
-  assign s_if.arid       = S_AXI_ARID[0];
-  assign s_if.araddr     = S_AXI_ARADDR[0];
-  assign s_if.arlen      = S_AXI_ARLEN[0];
-  assign s_if.arsize     = S_AXI_ARSIZE[0];
-  assign s_if.arburst    = S_AXI_ARBURST[0];
-  assign s_if.arvalid    = S_AXI_ARVALID[0];
-  assign S_AXI_ARREADY[0] = s_if.arready;
-
-  assign S_AXI_RID[0]    = s_if.rid;
-  assign S_AXI_RDATA[0]  = s_if.rdata;
-  assign S_AXI_RRESP[0]  = s_if.rresp;
-  assign S_AXI_RLAST[0]  = s_if.rlast;
-  assign S_AXI_RVALID[0] = s_if.rvalid;
-  assign s_if.rready     = S_AXI_RREADY[0];
-
   generate
-    for (genvar index = 1;
+    for (genvar index = 0;
          index < AXI_DUT_NUM_MASTERS;
-         index++) begin : inactive_master_ports
-      assign M_AXI_AWID[index]    = '0;
-      assign M_AXI_AWADDR[index]  = '0;
-      assign M_AXI_AWLEN[index]   = '0;
-      assign M_AXI_AWSIZE[index]  = '0;
-      assign M_AXI_AWBURST[index] = '0;
-      assign M_AXI_AWVALID[index] = 1'b0;
-      assign M_AXI_WID[index]     = '0;
-      assign M_AXI_WDATA[index]   = '0;
-      assign M_AXI_WSTRB[index]   = '0;
-      assign M_AXI_WLAST[index]   = 1'b0;
-      assign M_AXI_WVALID[index]  = 1'b0;
-      assign M_AXI_BREADY[index]  = 1'b0;
-      assign M_AXI_ARID[index]    = '0;
-      assign M_AXI_ARADDR[index]  = '0;
-      assign M_AXI_ARLEN[index]   = '0;
-      assign M_AXI_ARSIZE[index]  = '0;
-      assign M_AXI_ARBURST[index] = '0;
-      assign M_AXI_ARVALID[index] = 1'b0;
-      assign M_AXI_RREADY[index]  = 1'b0;
+         index++) begin : master_ports
+      assign M_AXI_AWID[index] = m_if[index].awid;
+      assign M_AXI_AWADDR[index] = m_if[index].awaddr;
+      assign M_AXI_AWLEN[index] = m_if[index].awlen;
+      assign M_AXI_AWSIZE[index] = m_if[index].awsize;
+      assign M_AXI_AWBURST[index] = m_if[index].awburst;
+      assign M_AXI_AWVALID[index] = m_if[index].awvalid;
+      assign m_if[index].awready = M_AXI_AWREADY[index];
+      assign M_AXI_WID[index] = m_if[index].wid;
+      assign M_AXI_WDATA[index] = m_if[index].wdata;
+      assign M_AXI_WSTRB[index] = m_if[index].wstrb;
+      assign M_AXI_WLAST[index] = m_if[index].wlast;
+      assign M_AXI_WVALID[index] = m_if[index].wvalid;
+      assign m_if[index].wready = M_AXI_WREADY[index];
+      assign m_if[index].bid = M_AXI_BID[index];
+      assign m_if[index].bresp = M_AXI_BRESP[index];
+      assign m_if[index].bvalid = M_AXI_BVALID[index];
+      assign M_AXI_BREADY[index] = m_if[index].bready;
+      assign M_AXI_ARID[index] = m_if[index].arid;
+      assign M_AXI_ARADDR[index] = m_if[index].araddr;
+      assign M_AXI_ARLEN[index] = m_if[index].arlen;
+      assign M_AXI_ARSIZE[index] = m_if[index].arsize;
+      assign M_AXI_ARBURST[index] = m_if[index].arburst;
+      assign M_AXI_ARVALID[index] = m_if[index].arvalid;
+      assign m_if[index].arready = M_AXI_ARREADY[index];
+      assign m_if[index].rid = M_AXI_RID[index];
+      assign m_if[index].rdata = M_AXI_RDATA[index];
+      assign m_if[index].rresp = M_AXI_RRESP[index];
+      assign m_if[index].rlast = M_AXI_RLAST[index];
+      assign m_if[index].rvalid = M_AXI_RVALID[index];
+      assign M_AXI_RREADY[index] = m_if[index].rready;
+
+      axi_protocol_assertions #(
+        .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+        .ID_WIDTH(AXI_M_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH),
+        .MAX_OUTSTANDING(4), .STAGE3_CHECKS(1'b1),
+        .STAGE6_CHECKS(1'b1), .PORT_INDEX(index), .TB_IS_MASTER(1'b1)
+      ) protocol_assertions (
+        .ACLK(m_if[index].ACLK), .ARESETn(m_if[index].ARESETn),
+        .awid(m_if[index].awid), .awaddr(m_if[index].awaddr),
+        .awlen(m_if[index].awlen), .awsize(m_if[index].awsize),
+        .awburst(m_if[index].awburst), .awvalid(m_if[index].awvalid),
+        .awready(m_if[index].awready), .wid(m_if[index].wid),
+        .wdata(m_if[index].wdata), .wstrb(m_if[index].wstrb),
+        .wlast(m_if[index].wlast), .wvalid(m_if[index].wvalid),
+        .wready(m_if[index].wready), .bid(m_if[index].bid),
+        .bresp(m_if[index].bresp), .bvalid(m_if[index].bvalid),
+        .bready(m_if[index].bready), .arid(m_if[index].arid),
+        .araddr(m_if[index].araddr), .arlen(m_if[index].arlen),
+        .arsize(m_if[index].arsize), .arburst(m_if[index].arburst),
+        .arvalid(m_if[index].arvalid), .arready(m_if[index].arready),
+        .rid(m_if[index].rid), .rdata(m_if[index].rdata),
+        .rresp(m_if[index].rresp), .rlast(m_if[index].rlast),
+        .rvalid(m_if[index].rvalid), .rready(m_if[index].rready)
+      );
     end
 
-    for (genvar index = 1;
+    for (genvar index = 0;
          index < AXI_DUT_NUM_SLAVES;
-         index++) begin : inactive_slave_ports
-      assign S_AXI_AWREADY[index] = 1'b0;
-      assign S_AXI_WREADY[index]  = 1'b0;
-      assign S_AXI_BID[index]     = '0;
-      assign S_AXI_BRESP[index]   = '0;
-      assign S_AXI_BVALID[index]  = 1'b0;
-      assign S_AXI_ARREADY[index] = 1'b0;
-      assign S_AXI_RID[index]     = '0;
-      assign S_AXI_RDATA[index]   = '0;
-      assign S_AXI_RRESP[index]   = '0;
-      assign S_AXI_RLAST[index]   = 1'b0;
-      assign S_AXI_RVALID[index]  = 1'b0;
+         index++) begin : slave_ports
+      assign s_if[index].awid = S_AXI_AWID[index];
+      assign s_if[index].awaddr = S_AXI_AWADDR[index];
+      assign s_if[index].awlen = S_AXI_AWLEN[index];
+      assign s_if[index].awsize = S_AXI_AWSIZE[index];
+      assign s_if[index].awburst = S_AXI_AWBURST[index];
+      assign s_if[index].awvalid = S_AXI_AWVALID[index];
+      assign S_AXI_AWREADY[index] = s_if[index].awready;
+      assign s_if[index].wid = S_AXI_WID[index];
+      assign s_if[index].wdata = S_AXI_WDATA[index];
+      assign s_if[index].wstrb = S_AXI_WSTRB[index];
+      assign s_if[index].wlast = S_AXI_WLAST[index];
+      assign s_if[index].wvalid = S_AXI_WVALID[index];
+      assign S_AXI_WREADY[index] = s_if[index].wready;
+      assign S_AXI_BID[index] = s_if[index].bid;
+      assign S_AXI_BRESP[index] = s_if[index].bresp;
+      assign S_AXI_BVALID[index] = s_if[index].bvalid;
+      assign s_if[index].bready = S_AXI_BREADY[index];
+      assign s_if[index].arid = S_AXI_ARID[index];
+      assign s_if[index].araddr = S_AXI_ARADDR[index];
+      assign s_if[index].arlen = S_AXI_ARLEN[index];
+      assign s_if[index].arsize = S_AXI_ARSIZE[index];
+      assign s_if[index].arburst = S_AXI_ARBURST[index];
+      assign s_if[index].arvalid = S_AXI_ARVALID[index];
+      assign S_AXI_ARREADY[index] = s_if[index].arready;
+      assign S_AXI_RID[index] = s_if[index].rid;
+      assign S_AXI_RDATA[index] = s_if[index].rdata;
+      assign S_AXI_RRESP[index] = s_if[index].rresp;
+      assign S_AXI_RLAST[index] = s_if[index].rlast;
+      assign S_AXI_RVALID[index] = s_if[index].rvalid;
+      assign s_if[index].rready = S_AXI_RREADY[index];
+
+      axi_protocol_assertions #(
+        .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+        .ID_WIDTH(AXI_S_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH),
+        .MAX_OUTSTANDING(4), .STAGE3_CHECKS(1'b1),
+        .STAGE6_CHECKS(1'b1), .PORT_INDEX(index), .TB_IS_MASTER(1'b0)
+      ) protocol_assertions (
+        .ACLK(s_if[index].ACLK), .ARESETn(s_if[index].ARESETn),
+        .awid(s_if[index].awid), .awaddr(s_if[index].awaddr),
+        .awlen(s_if[index].awlen), .awsize(s_if[index].awsize),
+        .awburst(s_if[index].awburst), .awvalid(s_if[index].awvalid),
+        .awready(s_if[index].awready), .wid(s_if[index].wid),
+        .wdata(s_if[index].wdata), .wstrb(s_if[index].wstrb),
+        .wlast(s_if[index].wlast), .wvalid(s_if[index].wvalid),
+        .wready(s_if[index].wready), .bid(s_if[index].bid),
+        .bresp(s_if[index].bresp), .bvalid(s_if[index].bvalid),
+        .bready(s_if[index].bready), .arid(s_if[index].arid),
+        .araddr(s_if[index].araddr), .arlen(s_if[index].arlen),
+        .arsize(s_if[index].arsize), .arburst(s_if[index].arburst),
+        .arvalid(s_if[index].arvalid), .arready(s_if[index].arready),
+        .rid(s_if[index].rid), .rdata(s_if[index].rdata),
+        .rresp(s_if[index].rresp), .rlast(s_if[index].rlast),
+        .rvalid(s_if[index].rvalid), .rready(s_if[index].rready)
+      );
     end
   endgenerate
 
@@ -284,8 +243,8 @@ module tb;
     .WIDTH_DS (AXI_DATA_WIDTH/8),
     .WIDTH_SID(AXI_S_ID_WIDTH)
   ) dut (
-    .AXI_RSTn       (m_if.ARESETn),
-    .AXI_CLK        (m_if.ACLK),
+    .AXI_RSTn       (m_if[0].ARESETn),
+    .AXI_CLK        (m_if[0].ACLK),
     .M_AXI_AWID     (M_AXI_AWID),
     .M_AXI_AWADDR   (M_AXI_AWADDR),
     .M_AXI_AWLEN    (M_AXI_AWLEN),
@@ -351,11 +310,23 @@ module tb;
   initial begin
     env_cfg = axi_env_cfg #()::type_id::create("env_cfg");
     env_cfg.m_cfg[0].is_active = UVM_ACTIVE;
-    env_cfg.m_cfg[0].drv_vif   = m_if;
-    env_cfg.m_cfg[0].mon_vif   = m_if;
+    env_cfg.m_cfg[0].drv_vif   = m_if[0];
+    env_cfg.m_cfg[0].mon_vif   = m_if[0];
+    env_cfg.m_cfg[1].is_active = UVM_ACTIVE;
+    env_cfg.m_cfg[1].drv_vif   = m_if[1];
+    env_cfg.m_cfg[1].mon_vif   = m_if[1];
+    env_cfg.m_cfg[2].is_active = UVM_ACTIVE;
+    env_cfg.m_cfg[2].drv_vif   = m_if[2];
+    env_cfg.m_cfg[2].mon_vif   = m_if[2];
     env_cfg.s_cfg[0].is_active = UVM_ACTIVE;
-    env_cfg.s_cfg[0].drv_vif   = s_if;
-    env_cfg.s_cfg[0].mon_vif   = s_if;
+    env_cfg.s_cfg[0].drv_vif   = s_if[0];
+    env_cfg.s_cfg[0].mon_vif   = s_if[0];
+    env_cfg.s_cfg[1].is_active = UVM_ACTIVE;
+    env_cfg.s_cfg[1].drv_vif   = s_if[1];
+    env_cfg.s_cfg[1].mon_vif   = s_if[1];
+    env_cfg.s_cfg[2].is_active = UVM_ACTIVE;
+    env_cfg.s_cfg[2].drv_vif   = s_if[2];
+    env_cfg.s_cfg[2].mon_vif   = s_if[2];
 
     uvm_config_db#(axi_env_cfg)::set(
       null, "uvm_test_top", "env_cfg", env_cfg

@@ -10,13 +10,9 @@ class axi_outstanding_tracker #(
 
   localparam int unsigned ID_COUNT = 1 << ID_WIDTH;
 
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH
-  ) event_t;
-
-  uvm_analysis_imp #(event_t,
-    axi_outstanding_tracker #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
-  ) channel_export;
+  uvm_tlm_analysis_fifo #(
+    axi_channel_event #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
+  ) channel_fifo;
 
   int unsigned aw_observed_by_id[ID_COUNT];
   int unsigned wlast_observed_by_id[ID_COUNT];
@@ -37,7 +33,10 @@ class axi_outstanding_tracker #(
   extern function new(string name = "axi_outstanding_tracker",
                       uvm_component parent = null);
   extern virtual function void build_phase(uvm_phase phase);
-  extern virtual function void write(event_t item);
+  extern virtual task run_phase(uvm_phase phase);
+  extern function void process_event(
+    axi_channel_event #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH) item
+  );
   extern function int unsigned write_outstanding();
   extern function int unsigned read_outstanding();
   extern function int unsigned pending_count();
@@ -57,11 +56,21 @@ endfunction
 
 function void axi_outstanding_tracker::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  channel_export = new("channel_export", this);
+  channel_fifo = new("channel_fifo", this);
 endfunction
 
-function void axi_outstanding_tracker::write(event_t item);
-  event_t snapshot;
+task axi_outstanding_tracker::run_phase(uvm_phase phase);
+  axi_channel_event #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH) item;
+  forever begin
+    channel_fifo.get(item);
+    process_event(item);
+  end
+endtask
+
+function void axi_outstanding_tracker::process_event(
+  axi_channel_event #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH) item
+);
+  axi_channel_event #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH) snapshot;
   int unsigned id;
 
   if (!enabled)
@@ -153,6 +162,7 @@ function int unsigned axi_outstanding_tracker::pending_count();
     total += wlast_observed_by_id[id];
     total += ar_observed_by_id[id];
   end
+  total += channel_fifo.used();
   return total;
 endfunction
 

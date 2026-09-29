@@ -10,6 +10,7 @@ package axi_test_pkg;
   `include "axi_base_test.sv"
   `include "axi_stage2_base_test.sv"
   `include "axi_stage3_base_test.sv"
+  `include "axi_stage6_base_test.sv"
   `include "axi_stage1_single_write_test.sv"
   `include "axi_stage1_single_read_test.sv"
   `include "axi_stage2_burst_write_test.sv"
@@ -27,5 +28,6 @@ package axi_test_pkg;
   `include "axi_stage3_mixed_rw_test.sv"
   `include "axi_stage3_id_mapping_test.sv"
   `include "axi_stage3_outstanding_stall_test.sv"
+  `include "axi_stage6_tests.sv"
 
 endpackage

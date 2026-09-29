@@ -84,7 +84,8 @@ RUN_CMD = $(WAVE_CMD) $(COV_SAVE_CMD) run -all; quit -code 0
 .PHONY: all prepare com compile sim run debug wave verdi cov_report urg \
 	clean clean_all regress stage2_regress positive_regress assertion_selftest \
 	stage3_elab stage3_regress stage3_assertion_selftest \
-	stage3_switch_model_selftest
+	stage3_switch_model_selftest stage6_regress stage6_ref_model_selftest \
+	stage6_assertion_selftest stage6_arbiter_selftest
 
 all: clean com sim
 
@@ -150,8 +151,11 @@ stage2_regress: com
 stage3_regress: com
 	powershell -NoProfile -Command "$$tests = @('axi_stage3_outstanding_write_test','axi_stage3_outstanding_read_test','axi_stage3_write_ooo_test','axi_stage3_read_ooo_test','axi_stage3_same_id_order_test','axi_stage3_mixed_rw_test','axi_stage3_id_mapping_test','axi_stage3_outstanding_stall_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
+stage6_regress: com
+	powershell -NoProfile -Command "$$tests = @('axi_stage6_route_matrix_test','axi_stage6_id_matrix_test','axi_stage6_multi_slave_parallel_test','axi_stage6_multi_master_write_arb_test','axi_stage6_multi_master_read_arb_test','axi_stage6_response_arb_test','axi_stage6_cross_master_same_id_test','axi_stage6_multiport_outstanding_test','axi_stage6_default_slave_test','axi_stage6_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+
 positive_regress: com
-	powershell -NoProfile -Command "$$tests = @('axi_stage1_single_write_test','axi_stage1_single_read_test','axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test','axi_stage3_outstanding_write_test','axi_stage3_outstanding_read_test','axi_stage3_write_ooo_test','axi_stage3_read_ooo_test','axi_stage3_same_id_order_test','axi_stage3_mixed_rw_test','axi_stage3_id_mapping_test','axi_stage3_outstanding_stall_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+	powershell -NoProfile -Command "$$tests = @('axi_stage1_single_write_test','axi_stage1_single_read_test','axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test','axi_stage3_outstanding_write_test','axi_stage3_outstanding_read_test','axi_stage3_write_ooo_test','axi_stage3_read_ooo_test','axi_stage3_same_id_order_test','axi_stage3_mixed_rw_test','axi_stage3_id_mapping_test','axi_stage3_outstanding_stall_test','axi_stage6_route_matrix_test','axi_stage6_id_matrix_test','axi_stage6_multi_slave_parallel_test','axi_stage6_multi_master_write_arb_test','axi_stage6_multi_master_read_arb_test','axi_stage6_response_arb_test','axi_stage6_cross_master_same_id_test','axi_stage6_multiport_outstanding_test','axi_stage6_default_slave_test','axi_stage6_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 assertion_selftest: com
 	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \
@@ -173,3 +177,24 @@ stage3_switch_model_selftest: com
 		-l $(LOG_DIR)/axi_switch_ref_model_selftest.log \
 		-do "run -all; quit -code 0"
 	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(LOG_DIR)/axi_switch_ref_model_selftest.log'; if ($$text -notmatch 'AXI_SWITCH_MODEL_SELFTEST_PASS') { exit 1 }"
+
+stage6_ref_model_selftest: com
+	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \
+		work.axi_stage6_ref_model_selftest $(UVM_OPTION) \
+		-l $(LOG_DIR)/axi_stage6_ref_model_selftest.log \
+		-do "run -all; quit -code 0"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(LOG_DIR)/axi_stage6_ref_model_selftest.log'; if ($$text -notmatch 'AXI_STAGE6_REF_MODEL_SELFTEST_PASS') { exit 1 }"
+
+stage6_assertion_selftest: com
+	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \
+		work.axi_stage6_protocol_assertions_selftest $(UVM_OPTION) \
+		-l $(LOG_DIR)/axi_stage6_protocol_assertions_selftest.log \
+		-do "run -all; quit -code 0"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(LOG_DIR)/axi_stage6_protocol_assertions_selftest.log'; if ($$text -notmatch 'AXI_STAGE6_ASSERT_SELFTEST_PASS') { exit 1 }"
+
+stage6_arbiter_selftest: com
+	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \
+		work.axi_stage6_arbiter_assertions_selftest $(UVM_OPTION) \
+		-l $(LOG_DIR)/axi_stage6_arbiter_assertions_selftest.log \
+		-do "run -all; quit -code 0"
+	powershell -NoProfile -Command "$$text = Get-Content -Raw -LiteralPath '$(LOG_DIR)/axi_stage6_arbiter_assertions_selftest.log'; if ($$text -notmatch 'AXI_STAGE6_ARBITER_SELFTEST_PASS') { exit 1 }"

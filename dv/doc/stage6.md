@@ -4,13 +4,15 @@
 >
 > 前置条件：`dv/doc/stage3.md`已经实施并通过冻结审核，当前M0到S0环境支持burst、delay/gap、五通道backpressure、读写分别最多4笔outstanding、相同ID保序、不同ID响应乱序、4-bit/8-bit ID映射、完整Monitor重建、Outstanding Tracker、Stage 3 Checker和协议断言。
 >
-> ID定义：本阶段严格遵守`dv/doc/ID_intro.md`；Default Slave是未映射地址对应的内部路由，不定义Default Master ID。
+> ID定义：本阶段严格遵守`dv/doc/ID_intro.md`。Default Slave仍是未映射地址对应的内部路由且不定义Default Master ID，但其功能验证已经从Stage 6范围移出。
 >
 > 代码风格：本阶段所有新增和修改代码必须遵守`dv/doc/code_style.md`。
 >
 > 工单格式：本工单遵守`dv/doc/task_work_order_standard.md`。
 >
 > 实施边界：本工单默认只修改`dv`、`sim`和验证文档。发现RTL缺陷时先保留独立失败测试、日志、波形和debug记录，未经审核不得修改`rtl`。
+
+> 范围变更（2026-09-28）：Stage 6暂不验证Master地址命中内部Default Slave的情况。所有Stage 6正向、随机和仲裁测试产生的AWADDR/ARADDR必须落在S0、S1或S2的有效地址窗口内；`axi_stage6_default_slave_test`及其Virtual Sequence不纳入Stage 6实现、回归和验收。Default Slave验证留待后续验证环境完整搭建后的补充阶段。
 
 ## 1. 文档目的和阶段概述
 
@@ -47,7 +49,7 @@ Stage 6在保留Stage 3通道能力的前提下，将验证环境扩展为完整
 - 实现逐通道转发Checker。
 - 使用bind实现内部轮询仲裁精确检查。
 - 验证ID扩展、恢复、来源Master、目标Slave和物理端口一致性。
-- 验证内部Default Slave的DECERR路径。
+- 约束所有Stage 6事务命中S0、S1或S2；Default Slave的DECERR路径延后验证。
 - 建立Stage 6系统级functional coverage和分层回归。
 
 ### 1.3 Stage 6A和Stage 6B划分
@@ -55,9 +57,9 @@ Stage 6在保留Stage 3通道能力的前提下，将验证环境扩展为完整
 Stage 6分为两个连续实施阶段：
 
 1. **Stage 6A：环境和检查组件扩展。** 完成三主三从TB、Env、Cfg、Virtual Sequencer、系统Reference Model、System Scoreboard、Channel Checker、Tracker阵列、Coverage Collector、bind仲裁Checker、package/filelist和编译入口。Stage 6A必须通过代码审核、编译和elaboration。
-2. **Stage 6B：系统场景和冻结验收。** 完成路由矩阵、ID矩阵、多端口并行、同Slave竞争、响应竞争、跨Master相同ID、多端口outstanding、Default Slave、随机smoke和负向自测，并运行Stage 1～3兼容回归。
+2. **Stage 6B：系统场景和冻结验收。** 完成路由矩阵、ID矩阵、多端口并行、同Slave竞争、响应竞争、跨Master相同ID、多端口outstanding、随机smoke和负向自测，并运行Stage 1～3兼容回归。Default Slave场景不属于本阶段验收。
 
-Stage 6A编译通过只表示三主三从结构可以进入测试，不表示路由、仲裁、ID、Default路径或跨端口Scoreboard已经验证正确。
+Stage 6A编译通过只表示三主三从结构可以进入测试，不表示路由、仲裁、ID或跨端口Scoreboard已经验证正确；Default路径不在Stage 6验证结论内。
 
 ### 1.4 Stage 6冻结决策
 
@@ -75,7 +77,7 @@ Stage 6A编译通过只表示三主三从结构可以进入测试，不表示路
 - Outstanding Tracker只根据Monitor event维护接口观察状态，不读取Driver、Reference Model或Scoreboard。
 - 轮询仲裁由RTL实施；DV使用独立预测状态和bind Checker检查，不在Driver、sequence或System Scoreboard中替DUT选择winner。
 - 轮询指针只在对应winner成功握手后更新；stall期间winner和指针保持稳定。
-- Default Slave由未映射AWADDR/ARADDR选择，是合法DECERR路径，不定义Default Master。
+- Default Slave定义保持不变，但Stage 6禁止产生未映射AWADDR/ARADDR，不对该路径作功能结论。
 - 下游响应SID的source-master tag `[5:4]`只允许`01/10/11`；`00`是非法Master tag。
 - 非法Master tag不得被路由到任意Master，不得在正向测试中生成。
 - Stage 6继续保留Stage 3的最大每Master、每方向4笔outstanding。
@@ -90,7 +92,7 @@ Stage 6A编译通过只表示三主三从结构可以进入测试，不表示路
 
 - 三主三从外部物理端口全部启用。
 - 9条正常Master到Slave路径。
-- 内部Default Slave路径。
+- 内部Default Slave路径延后，不属于Stage 6能力和验收范围。
 - 多Master、多Slave同时读写。
 - 每个Master独立outstanding和相同ID顺序。
 - 跨Master相同4-bit ID并存。
@@ -172,7 +174,7 @@ Stage 6正向测试中六个agent均为`UVM_ACTIVE`。未启动sequence的Master
 | `32'h0000_0000～32'h0000_0FFF` | `AXI_ROUTE_S0` | `s_if[0]` |
 | `32'h0000_2000～32'h0000_2FFF` | `AXI_ROUTE_S1` | `s_if[1]` |
 | `32'h0000_4000～32'h0000_4FFF` | `AXI_ROUTE_S2` | `s_if[2]` |
-| 其他 | `AXI_ROUTE_DEFAULT` | DUT内部Default Slave |
+| 其他 | `AXI_ROUTE_DEFAULT` | Stage 6禁止生成；留待后续补充验证 |
 
 整个burst只按AW/AR地址译码一次。
 
@@ -229,22 +231,16 @@ slave_key = {slave_port, full_sid}
 
 M0、M1和M2可以同时使用相同的4-bit ID，三者上下文必须完全独立。
 
-### 3.5 Default Slave
+### 3.5 Default Slave（延后验证）
 
-Default Slave规则固定为：
+Default Slave的设计定义不因本次范围变更而改变：它仍由未映射AWADDR/ARADDR选择，是DUT内部路由，不存在Default Master ID。但Stage 6不生成、不比较、也不覆盖该类事务：
 
-- Default由未映射AWADDR/ARADDR选择。
-- Default是DUT内部第四条物理路由，不实例化第四个Slave agent。
-- Master侧不存在Default BID/RID编码。
-- Default请求仍携带原始4-bit事务ID，AWID和WID仍必须相等；该ID用于事务关联和返回恢复，不用于表示Default路由。
-- Default选择只由AWADDR/ARADDR未命中正常地址窗口决定，Reference Model不得把`ID[3:2]`解释成Default编码。
-- Default B/R返回原请求的4-bit ID。
-- Default写响应必须为`BRESP=DECERR`。
-- Default读响应每拍必须为`RRESP=DECERR`。
-- Default读数据按照当前项目RTL期望为全1。
-- Default R beat数量为`ARLEN+1`，RLAST只在最后一拍。
-- Reference Model用请求上下文记录`route=DEFAULT`，不能根据返回Master ID反推Default。
-- Default写路径必须作为早期bring-up定向测试；如果失败，按RTL缺陷流程处理，不通过发明Default ID规避。
+- 所有Master Sequence和Virtual Sequence必须将AWADDR/ARADDR约束在S0、S1或S2窗口内。
+- Random Smoke必须显式排除未映射地址，不允许依赖随机命中率规避Default。
+- Stage 6不要求Reference Model产生Default expected response。
+- Stage 6不要求System Scoreboard检查Default DECERR、返回数据或原ID恢复。
+- Stage 6不建立Default Slave正向测试，也不将Default路径计入coverage closure。
+- Default Slave的读写、DECERR、内部SID关联和返回路由统一放到后续补充阶段重新制定并验收。
 
 ### 3.6 非法Slave响应
 
@@ -371,7 +367,7 @@ Stage 6新测试不得在每个test中重复直接访问六个agent层次并自�
 
 - 每Master读、写分别最多4笔outstanding。
 - 三个Master的上限和状态相互独立。
-- 每个Master可以访问S0、S1、S2和Default地址。
+- 每个Master在Stage 6中只访问S0、S1和S2地址窗口。
 - 每个Master可以同时读写。
 - 同一Master相同ID严格保序。
 - 不同Master使用相同4-bit ID时互不影响。
@@ -413,7 +409,7 @@ Stage 6仍使用Stage 3非交织能力：
 
 ### 7.1 Master到Slave仲裁
 
-每个正常Slave及Default路径分别存在AW、W、AR仲裁候选。Stage 6主要检查正常S0～S2路径，Default仲裁结合Default定向测试检查。
+Stage 6只检查正常S0～S2路径的AW、W、AR仲裁。Default路径仲裁不激励、不覆盖、不验收。
 
 三路Master仲裁初始优先级：
 
@@ -425,16 +421,16 @@ M0 -> M1 -> M2
 
 ### 7.2 Slave到Master仲裁
 
-每个Master的B/R返回方向候选包括：
+RTL中每个Master的B/R返回方向可以包含Default候选，但Stage 6只激励和检查：
 
 ~~~text
-S0, S1, S2, Default
+S0, S1, S2
 ~~~
 
 初始优先级：
 
 ~~~text
-S0 -> S1 -> S2 -> Default
+S0 -> S1 -> S2
 ~~~
 
 ### 7.3 成功握手和指针更新
@@ -464,20 +460,19 @@ winner已经选择但尚未握手时：
 在请求持续有效、目标READY持续允许完成且没有reset的前提下：
 
 - 三路Master仲裁的持续请求最多等待其他两个成功grant。
-- 四路返回仲裁的持续请求最多等待其他三个成功grant。
+- Stage 6三路正常Slave返回仲裁的持续请求最多等待其他两个成功grant；Default候选不参与本阶段公平性结论。
 - 公平性按成功握手计数，不按空闲周期计数。
 
-## 8. S6-07：Default和非法响应处理
+## 8. S6-07：Default范围约束和非法响应处理
 
-### 8.1 Default正常路径
+### 8.1 Default路径范围约束
 
-Default请求是合法功能场景：
+Default请求在RTL定义中仍是合法功能场景，但不属于Stage 6：
 
-- 由未映射地址触发。
-- 不产生外部S0/S1/S2 expected request。
-- System Reference Model直接产生expected Master DECERR response。
-- System Scoreboard检查原Master、原始ID、RESP、beat数量和RLAST。
-- Channel Checker确认该请求没有错误出现在任一正常Slave端口。
+- Stage 6所有AWADDR/ARADDR必须命中S0、S1或S2。
+- 如果Stage 6测试产生未映射地址，视为测试激励错误并立即报错。
+- 不为Default建立expected request/response、coverage目标或正向验收结论。
+- Default相关验证留待后续补充阶段。
 
 ### 8.2 Invalid Master Tag
 
@@ -598,8 +593,8 @@ M2 -> S0, S1, S2
 
 S0、S1、S2产生指向同一Master的合法B响应：
 
-- 初始和后续winner符合四路返回仲裁规则。
-- 未参与的Default候选被跳过。
+- 初始和后续winner符合S0、S1、S2三路正常Slave返回仲裁规则。
+- Stage 6不激励Default候选，轮询检查只覆盖S0、S1、S2。
 - BREADY stall期间winner稳定。
 - 每个B只到达SID指定的Master。
 
@@ -615,19 +610,11 @@ S0、S1、S2使用单拍R响应指向同一Master，检查轮询、锁定、恢�
 - 内部bind Checker的request/grant预测匹配。
 - 无onehot、grant非法、stall切换或指针提前更新错误。
 
-## 12. S6-11：Default和非法场景测试点
+## 12. S6-11：Default范围和非法场景测试点
 
-### 12.1 Default正向测试
+### 12.1 Default场景（延后）
 
-M0、M1、M2分别执行：
-
-- 未映射地址单拍写。
-- 未映射地址单拍读。
-- 至少一个多拍读。
-- 检查DECERR、原ID恢复、数据模式和LAST。
-- 确认S0/S1/S2均未观察到对应request。
-
-Default写失败时必须保留独立debug记录，不允许把测试静默移除。
+Stage 6不建立或运行Default正向测试。`axi_stage6_default_slave_test`及其Virtual Sequence不纳入本阶段回归；所有定向和随机激励均必须命中S0、S1或S2。Default读写、DECERR、原ID恢复、数据模式、beat数量和返回路由留待后续补充阶段统一验证。
 
 ### 12.2 Invalid Master Tag负向测试
 
@@ -678,7 +665,7 @@ ARID[3:2] == decode_address(ARADDR)
 WID == 对应写事务AWID
 ~~~
 
-Default地址作为例外由Default上下文检查，不把它误判为正常Slave ID错误。
+Stage 6不允许出现Default地址；若观察到未映射地址，按测试激励或配置错误报告，不进入正常Slave ID断言判定。
 
 ### 13.3 Slave SID断言
 
@@ -722,7 +709,7 @@ Master到Slave的AW/W/AR和Slave到Master的B/R分别使用适配宽度的Checke
 至少覆盖：
 
 - source Master M0/M1/M2。
-- target S0/S1/S2/Default。
+- target S0/S1/S2。
 - `Master × Slave × direction`。
 - transaction tag `00/01/10/11`。
 - burst类型和长度。
@@ -732,10 +719,10 @@ Master到Slave的AW/W/AR和Slave到Master的B/R分别使用适配宽度的Checke
 - 相同4-bit ID跨Master并存。
 - 同ID多笔和不同ID乱序。
 - AW/AR竞争候选数量1～3。
-- B/R竞争候选数量1～4。
+- B/R正常Slave竞争候选数量1～3。
 - winner端口和轮询跳过。
 - 仲裁stall。
-- Default读写和DECERR。
+- 三个正常Slave的读写路由。
 - 路由与backpressure交叉。
 
 Stage 6定向回归必须命中所有Stage 6计划功能bin。Stage 4交织和Stage 5复杂reset/READY相关bin不在本阶段完成条件中。
@@ -800,7 +787,7 @@ sid_is_legal(slave_port, sid) -> bit
 request_id_matches_route(address, master_id) -> bit
 ~~~
 
-`decode_slave()`只用于正常外部S0～S2 SID。Default由地址上下文和内部物理路径表示，不能通过Master返回ID反推。
+`decode_slave()`只用于正常外部S0～S2 SID。映射核心可以保留`decode_address()`的Default枚举以反映RTL定义，但Stage 6输入约束不允许该结果进入expected事务路径。
 
 ### 16.3 职责限制
 
@@ -857,7 +844,7 @@ uvm_analysis_port #(m_rsp_t) m_rsp_ap[3];
 4. 正常route时计算expected SID。
 5. 将4-bit ID替换为expected 8-bit SID。
 6. 通过对应`s_req_ap[slave_port]`发布expected request。
-7. Default route时不向任何`s_req_ap`发布，直接建立Default expected response。
+7. 若意外解码为Default route，报告Stage 6激励或配置错误，不向任何`s_req_ap`或`m_rsp_ap`发布expected。
 
 ### 17.4 Slave response处理
 
@@ -872,28 +859,9 @@ uvm_analysis_port #(m_rsp_t) m_rsp_ap[3];
 
 非法SID只报告错误，不发布expected。
 
-### 17.5 Default expected response
+### 17.5 Default expected response（延后）
 
-Default写request产生：
-
-~~~text
-dir   = WRITE
-id    = original Master ID
-bresp = DECERR
-~~~
-
-Default读request产生：
-
-~~~text
-dir       = READ
-id        = original Master ID
-len       = request len
-rdata[]   = all ones
-rresp[]   = DECERR
-rlast     = only final beat
-~~~
-
-Reference Model不预测具体返回周期。
+Stage 6不要求Reference Model生成Default expected response，也不以Default的DECERR、RDATA、beat数量或返回周期作为实现和验收条件。若代码中保留相关API或数据类型，只能作为未启用的后续扩展点；Stage 6测试不得调用或依赖它们。
 
 ### 17.6 非职责
 
@@ -955,7 +923,7 @@ Scoreboard必须确认：
 - 每个request只被一个response消费。
 - 同一`{master_port,id}`按接受顺序完成。
 - 跨Master相同4-bit ID不会合并队列。
-- Default expected response只消费对应Default请求。
+- 未映射请求不会进入Stage 6 expected队列；一旦出现应作为激励或配置错误报告。
 - actual response没有expected时报告unexpected。
 
 ### 18.6 结束检查
@@ -1005,11 +973,9 @@ Master/Slave Monitor的`channel_ap`分别连接对应FIFO的`analysis_export`。
 - 不比较上下游`sample_cycle`相等。
 - 比较物理端口、ID、单拍payload、RESP和LAST。
 
-### 19.4 Default处理
+### 19.4 Default处理（延后）
 
-- Default request不期待S0/S1/S2下游event。
-- Checker记录Default路由并确认没有正常Slave错误接收。
-- Default完整response内容由System Scoreboard检查。
+Stage 6的Channel Checker只处理S0、S1、S2正常路由。若Master Monitor观察到未映射请求，Checker报告测试激励或配置错误；不建立Default event上下文，也不对Default功能作通过结论。
 
 ### 19.5 event/item一致性
 
@@ -1082,7 +1048,7 @@ system_upstream_write = Σm_trackers[i].write_outstanding()
 system_upstream_read  = Σm_trackers[i].read_outstanding()
 ~~~
 
-由于DUT内部FIFO和Default路径，上下游瞬时总数不要求每周期相等；结束状态必须全部为0。
+由于DUT内部FIFO和不同端口流水，上下游瞬时总数不要求每周期相等；结束状态必须全部为0。
 
 ### 20.6 非职责
 
@@ -1300,7 +1266,6 @@ dv/seq/axi_stage6_multi_master_read_arb_vseq.sv
 dv/seq/axi_stage6_response_arb_vseq.sv
 dv/seq/axi_stage6_cross_master_same_id_vseq.sv
 dv/seq/axi_stage6_multiport_outstanding_vseq.sv
-dv/seq/axi_stage6_default_slave_vseq.sv
 dv/seq/axi_stage6_random_smoke_vseq.sv
 dv/seq/axi_s_stage6_reactive_seq.sv
 
@@ -1313,7 +1278,6 @@ dv/tc/axi_stage6_multi_master_read_arb_test.sv
 dv/tc/axi_stage6_response_arb_test.sv
 dv/tc/axi_stage6_cross_master_same_id_test.sv
 dv/tc/axi_stage6_multiport_outstanding_test.sv
-dv/tc/axi_stage6_default_slave_test.sv
 dv/tc/axi_stage6_random_smoke_test.sv
 
 dv/tb/axi_stage6_protocol_assertions_selftest.sv
@@ -1375,7 +1339,7 @@ module/bind文件不得include进UVM package。
 - System Scoreboard不读取Driver/sequence私有状态。
 - 每个物理接口有独立Tracker。
 - bind Checker不驱动RTL信号。
-- Default和Invalid Master Tag定义没有混淆。
+- Stage 6地址约束排除Default；Invalid Master Tag仍按独立非法SID场景处理。
 - 没有提前实现Stage 4/5能力。
 - 未经批准没有修改RTL。
 
@@ -1392,7 +1356,6 @@ Stage 6 elaboration：0 error
 独立自测必须覆盖：
 
 - 三个正常地址窗口和边界。
-- Default地址。
 - M0/M1/M2 tag编解码。
 - S0/S1/S2 tag编解码。
 - 36组`Master × Slave × transaction tag` SID映射。
@@ -1400,7 +1363,6 @@ Stage 6 elaboration：0 error
 - 实际Slave端口与SID target tag一致性。
 - invalid master tag `00`。
 - invalid slave tag。
-- Default expected B/R内容。
 
 自测使用固定输入输出表，不通过与sequence共用随机算法互相验证。
 
@@ -1413,7 +1375,6 @@ Stage 6 elaboration：0 error
 - 不同Master/ID/Slave乱序不会误报全局FIFO错误。
 - 同一`{master_port,id}`严格保序。
 - 正常B/R响应返回正确Master。
-- Default response直接匹配原Master请求。
 - 重复、遗漏、额外和错误端口transaction均能报告。
 - 测试结束expected/actual和pending队列全空。
 
@@ -1423,7 +1384,7 @@ Stage 6 elaboration：0 error
 - B/R逐beat恢复ID、数据、RESP和LAST正确。
 - 仲裁造成的跨键重排不误报。
 - 同键保持FIFO。
-- Default请求不会错误期待外部Slave event。
+- 未映射Master请求会被识别为Stage 6激励或配置错误。
 - event与完整item计数一致。
 
 ## 29. A6-04：Outstanding Tracker验收
@@ -1446,20 +1407,18 @@ Stage 6 elaboration：0 error
 - 每次成功握手后轮询到下一eligible端口。
 - stall期间winner不切换。
 - 请求撤销或缺席时正确跳过。
-- 三路和四路持续竞争满足有界公平性。
+- 三路Master请求竞争和三路正常Slave响应竞争满足有界公平性。
 - 外部功能结果与内部bind检查同时通过。
 - bind Checker负向自测全部命中预期。
 
-## 31. A6-06：Default和非法SID验收
+## 31. A6-06：Default范围和非法SID验收
 
-### 31.1 Default
+### 31.1 Default范围
 
-- 三个Master的Default读写全部返回原Master。
-- BID/RID恢复原始4-bit ID。
-- BRESP/RRESP均为DECERR。
-- RDATA和beat数量符合期望。
-- S0/S1/S2没有观察到Default请求。
-- Default路径没有未完成上下文。
+- Stage 6正向、随机和仲裁测试均不产生Default读写。
+- 所有AWADDR/ARADDR必须命中S0、S1或S2有效地址窗口。
+- `axi_stage6_default_slave_test`及其Virtual Sequence不进入Stage 6回归和验收。
+- Stage 6不对Default的DECERR、数据、ID恢复或返回路由作功能结论；这些内容留待后续补充阶段。
 
 ### 31.2 Invalid Master Tag
 
@@ -1489,11 +1448,10 @@ axi_stage6_multi_master_read_arb_test
 axi_stage6_response_arb_test
 axi_stage6_cross_master_same_id_test
 axi_stage6_multiport_outstanding_test
-axi_stage6_default_slave_test
 axi_stage6_random_smoke_test
 ~~~
 
-继续运行Stage 1的2个、Stage 2的7个和Stage 3的8个正向测试。Stage 6正向测试最少10个，因此完整正向回归当前最低目标为27个测试全部通过。
+继续运行Stage 1的2个、Stage 2的7个和Stage 3的8个正向测试。Stage 6正向测试最少9个，因此完整正向回归当前最低目标为26个测试全部通过。
 
 ## 33. A6-08：负向和独立自测
 
@@ -1589,13 +1547,13 @@ make assertion_selftest
 12. 多Master、多Slave并行和多端口outstanding通过。
 13. AW、AR、B和Stage 6单拍W/R轮询仲裁通过。
 14. bind仲裁Checker的onehot、eligible、stall、pointer和公平性检查通过。
-15. Default Slave三Master读写和DECERR检查通过。
+15. 所有Stage 6 AWADDR/ARADDR均命中S0、S1或S2，Default验证已明确延后且未计入通过结论。
 16. Invalid Master Tag及其他非法SID负向自测命中预期。
 17. 六接口协议断言正向零非预期失败。
 18. Stage 6 Reference Model独立固定表格自测通过。
 19. Stage 6计划functional coverage bin全部命中。
-20. Stage 6最少10个正向测试全部通过。
-21. 完整正向回归当前最低27/27通过。
+20. Stage 6最少9个正向测试全部通过。
+21. 完整正向回归当前最低26/26通过。
 22. 编译和elaboration为0 error且无新增非预期warning。
 23. 所有统一结束状态检查通过。
 24. 未经审核没有修改RTL。
@@ -1638,11 +1596,11 @@ Stage 5实现完整READY、容量和复杂reset时：
 | Tracker职责 | 已冻结 | 六接口按真实握手独立维护outstanding |
 | 仲裁检查 | 已冻结 | 成功握手更新指针，使用bind精确观察内部req/grant |
 | Virtual Sequence | 已冻结 | Stage 6新测试统一使用Virtual Sequence/Virtual Sequencer |
-| Default Slave | 已冻结 | 未映射地址合法DECERR路径，不存在Default Master ID |
+| Default Slave | 延后验证 | Stage 6只产生S0/S1/S2有效地址，不对未映射地址路径作功能结论 |
 | Invalid Master Tag | 已冻结 | SID `[5:4]==00`非法，不路由到任何Master |
 | RTL修改 | 未批准 | 默认仅修改`dv`、`sim`和文档 |
 | 编译与仿真 | 待运行 | 实施后填写工具版本、命令和结果 |
-| 正向回归 | 待运行 | 当前最低目标27/27 |
+| 正向回归 | 待运行 | 当前最低目标26/26 |
 | 负向自测 | 待运行 | Reference Model、协议断言和仲裁断言独立入口 |
 | Functional Coverage | 待实施 | 只闭环Stage 6计划bin |
 
