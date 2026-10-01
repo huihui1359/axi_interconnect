@@ -72,7 +72,9 @@ class axi_req_item #(
   constraint c_wstrb {
     if (dir == AXI_WRITE) {
       foreach (wstrb[i])
-        (wstrb[i] & ~calc_legal_wstrb_mask(i)) == '0;
+        (wstrb[i] & ~calc_legal_wstrb_mask(
+          i, size, len, addr, burst
+        )) == '0;
     }
   }
 
@@ -168,7 +170,11 @@ class axi_req_item #(
 //例:addr=0x1002,size=1,这个函数返回的掩码是0b00001100，表示wstrb[3:0]中只有第2和第3位可以使用
   // Required by c_wstrb; not an interface protocol checker.
   local function bit [DATA_BYTES-1:0] calc_legal_wstrb_mask(
-    int unsigned beat_index
+    int unsigned               beat_index,
+    bit [2:0]                  size_value,
+    bit [LEN_WIDTH-1:0]        len_value,
+    bit [ADDR_WIDTH-1:0]       addr_value,
+    axi_burst_e                burst_value
   );
     bit [DATA_BYTES-1:0] mask;
     longint unsigned     bytes;
@@ -183,13 +189,13 @@ class axi_req_item #(
     longint unsigned     byte_addr_v;
 
     mask          = '0;
-    bytes         = 64'd1 << size;
-    beats         = longint'(len) + 1;
-    start_v       = longint'(addr);
+    bytes         = 64'd1 << size_value;
+    beats         = longint'(len_value) + 1;
+    start_v       = longint'(addr_value);
     aligned_start = (start_v / bytes) * bytes;
     beat_addr_v   = start_v;
 
-    case (burst)
+    case (burst_value)
       AXI_BURST_FIXED: beat_addr_v = start_v;
 
       AXI_BURST_INCR: begin

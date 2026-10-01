@@ -1,0 +1,13 @@
+/build/
+/log/
+/verdiLog/
+/wave/
+/csrc/
+/simv.daidir/
+/ucli.key
+/vc_hdrs.h
+/novas_dump.log
+/tr_db.log
+/verdi_config_file
+novas.conf
+novas.rc
