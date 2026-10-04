@@ -29,7 +29,6 @@ class axi_system_ref_model #(
   axi_switch_ref_model #(ADDR_WIDTH, M_ID_WIDTH, S_ID_WIDTH) map;
   bit enabled;
   int unsigned error_count;
-  int unsigned default_request_count;
   int unsigned pending_write_by_sid[NUM_SLAVES][S_ID_COUNT];
   int unsigned pending_read_by_sid[NUM_SLAVES][S_ID_COUNT];
 
@@ -98,37 +97,6 @@ class axi_system_ref_model #(
     return result;
   endfunction
 
-  function axi_rsp_item #(
-    DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) build_default_response(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) req
-  );
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) result;
-    result = axi_rsp_item #(
-      DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-    )::type_id::create("expected_default_rsp");
-    result.dir = req.dir;
-    result.id = req.id;
-    result.len = (req.dir == AXI_READ) ? req.len : '0;
-    result.bresp = (req.dir == AXI_WRITE) ? AXI_RESP_DECERR : AXI_RESP_OKAY;
-    result.rsp_delay = 0;
-    if (req.dir == AXI_READ) begin
-      result.rdata = new[int'(req.len) + 1];
-      result.rresp = new[int'(req.len) + 1];
-      result.rbeat_gap = new[int'(req.len)];
-      foreach (result.rdata[index]) begin
-        result.rdata[index] = '1;
-        result.rresp[index] = AXI_RESP_DECERR;
-      end
-      foreach (result.rbeat_gap[index]) result.rbeat_gap[index] = 0;
-    end
-    else begin
-      result.rdata = new[0];
-      result.rresp = new[0];
-      result.rbeat_gap = new[0];
-    end
-    return result;
-  endfunction
   extern function int unsigned pending_count();
   extern virtual function void check_phase(uvm_phase phase);
 
@@ -141,7 +109,6 @@ function axi_system_ref_model::new(
   super.new(name, parent);
   enabled = 1'b0;
   error_count = 0;
-  default_request_count = 0;
 endfunction
 
 function void axi_system_ref_model::build_phase(uvm_phase phase);
@@ -178,7 +145,6 @@ task axi_system_ref_model::process_master_requests(
 );
   axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) req;
   axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) expected_req;
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) expected_rsp;
   axi_route_e route;
   int signed slave_index;
 
@@ -202,9 +168,10 @@ task axi_system_ref_model::process_master_requests(
       s_req_ap[slave_index].write(expected_req);
     end
     else begin
-      default_request_count++;
-      expected_rsp = build_default_response(req);
-      m_rsp_ap[master_index].write(expected_rsp);
+      error_count++;
+      `uvm_error("AXI_SYS_REF_UNMAPPED_ADDR", $sformatf(
+        "M%0d Stage 6 %s request uses unmapped address 0x%0h",
+        master_index, req.dir.name(), req.addr))
     end
   end
 endtask

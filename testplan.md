@@ -4,17 +4,17 @@
 
 本测试计划以当前实际参与编译和仿真的 `rtl/`、`dv/`、`sim/sim.f` 与 `sim/Makefile` 为基线，不把未被当前 filelist 使用的旧 `uvm_tb/` 用例作为“已实现”证据。测试点按以下思路展开：
 
-1. 从 RTL 顶层接口与子模块职责出发，拆分复位、五通道传输、FIFO、地址译码、ID 扩展/还原、outstanding/reorder、默认 Slave 和双向仲裁等功能。
-2. 从 AXI3 数据传输规则出发，补充 burst、长度、大小、WSTRB、VALID/READY、LAST、响应、同 ID 保序、不同 ID 乱序、写/读交织和 4 KB 边界等协议场景。
+1. 从 RTL 顶层接口与子模块职责出发，拆分上电复位、五通道传输、地址译码、ID 扩展/还原、outstanding/reorder、默认 Slave 和双向仲裁等功能。
+2. 从 AXI3 数据传输规则出发，补充当前 transaction/driver 能产生的 burst、长度、大小、WSTRB、VALID/READY、LAST、响应、同 ID 保序、不同 ID 乱序和 4 KB 合法边界等协议场景。
 3. 从三主三从互连特性出发，建立 Master × Slave × 读写方向的路由矩阵，并覆盖同一 Slave 竞争、同一 Master 响应竞争、不同 Slave 并行及跨端口同 ID 场景。
-4. 从验证环境能力出发，对照 sequence、test、scoreboard、channel checker、outstanding tracker、assertion、functional coverage 和回归入口，判断测试点是否真正落地。
-5. “已实现”不仅要求存在激励，还要求存在自动检查；状态同时参考 `sim/work/log` 中截至 2026-09-28 的最近一次仿真结果。
+4. 先以当前验证环境的能力为边界：只列出不修改 agent/driver/monitor/tb 基础架构即可实施的测试点；不列举当前环境无法产生或观测的 beat 级交织、运行中复位、非法事务注入、未知 SID 注入和内部 FIFO 指针专项测试。
+5. 对照 sequence、test、scoreboard、channel checker、outstanding tracker、assertion、functional coverage 和回归入口，判断测试点是否已经落地。“已实现”不仅要求存在激励，还要求存在自动检查；状态同时参考 `sim/work/log` 中截至 2026-09-28 的最近一次仿真结果。
 
 状态标记：
 
 - ✅：已有定向/随机激励和自动检查，且最近日志有通过证据。
 - ⚠️：测试与检查已经实现，但当前最近一次仿真失败，或只实现了该测试点的一部分。
-- ⬜：当前没有对应测试，或激励/检查不足以证明该测试点。
+- ⬜：当前尚无对应测试，但已有 transaction、driver、responder 和 checker 能力可以直接实现。
 
 ## 2. 设计与验证基线
 
@@ -27,6 +27,7 @@
 | 地址映射 | S0=`0x0000_0000~0x0000_0FFF`；S1=`0x0000_2000~0x0000_2FFF`；S2=`0x0000_4000~0x0000_4FFF`；其余到 Default Slave |
 | 缓冲 | AW/W/B/AR/R 两侧均有同步 FIFO，RTL 中实例深度为 4；读写 SID buffer 深度为 4 |
 | 检查体系 | 分阶段端到端 checker、Stage6 系统参考模型/scoreboard、逐通道 forwarding checker、outstanding tracker、协议断言、内部 round-robin bind checker |
+| 当前环境能力边界 | 支持合法 AXI transaction、延迟/背压、outstanding、事务级乱序和多端口并发；不支持 beat 级 W/R 交织、运行中复位、非法 transaction 绕过约束、未知 SID 响应注入和内部 FIFO 指针直接观测 |
 | 当前回归 | `positive_regress` 接入 27 个测试；最近日志中 25 个通过，2 个失败；6 个 checker/assertion/reference-model 自测通过 |
 
 当前两个已知失败为：
@@ -41,8 +42,6 @@
 | ID | 测试点与建议激励 | 预期结果/检查内容 | 状态与现有证据 |
 |---|---|---|---|
 | RST-01 | 上电保持低有效复位至少 2 拍后释放 | Master/Slave 两侧由 DUT 驱动的 VALID/READY 输出在复位期归零；释放后可正常传输 | ✅ 每个现有测试均执行上电复位；`axi_protocol_assertions` 含两侧 reset-output 检查 |
-| RST-02 | DUT 空闲时再次拉低并释放复位 | 内部 FIFO、SID buffer、仲裁状态和 outstanding 状态清空，复位后第一笔事务正确 | ⬜ assertion 自测会复位 assertion 状态，但没有针对完整 DUT 的二次复位用例 |
-| RST-03 | AW/W/AR/R/B 被阻塞或 FIFO 非空时插入复位 | 所有未完成事务被丢弃且环境同步清理，复位后无陈旧响应、死锁或 X | ⬜ 未实现运行中复位场景 |
 | BASIC-01 | M0→S0 单拍全字写，固定 ID/地址/数据/全 WSTRB | AW/W 正确转发，BID 恢复，BRESP/数据一致，无 pending | ✅ `axi_stage1_single_write_test` 通过 |
 | BASIC-02 | M0→S0 单拍全字读 | AR 正确转发，RID/RDATA/RRESP/RLAST 正确返回 | ✅ `axi_stage1_single_read_test` 通过 |
 | BASIC-03 | 空闲若干周期后发起事务、事务结束后再次空闲 | 不产生伪握手、伪响应或残留 pending | ✅ 各测试结尾检查 checker/driver/monitor/tracker 清空 |
@@ -59,7 +58,6 @@
 | ROUTE-06 | 3 Master × Default × 读/写完整矩阵 | 每个 Master 均收到原 ID 对应的 DECERR；写响应 1 个，读响应 beat 数/RLAST 正确 | ⚠️ `axi_stage6_default_slave_test` 只有 2 读+1 写且当前 3 响应仅完成 2 个 |
 | ROUTE-07 | 合法映射与 Default 请求并发，并制造响应竞争 | Default 不影响正常 Slave 路由；B/R 仲裁仍正确 | ⬜ 未实现正常 Slave 与 Default 并发竞争 |
 | ROUTE-08 | 合法 burst 的最后一个 byte 恰好位于 4 KB 边界前 | 整个 burst 路由到起始地址对应 Slave，不跨界、不拆包 | ⬜ transaction 有“不跨 4 KB”约束，但无定向边界值测试 |
-| ROUTE-09 | 负向构造跨 4 KB 的 INCR burst | 协议 checker 报错；该非法输入不作为 DUT 功能正确性判定依据 | ⬜ 当前 assertion 没有 4 KB crossing 检查/自测 |
 
 ### 3.3 五通道转发、数据属性与响应
 
@@ -92,21 +90,17 @@
 | BURST-09 | W beat 之间插入固定 gap；R beat 之间插入固定 gap | gap 被允许，端到端数据与 beat 数保持正确 | ✅ `axi_stage2_delay_gap_test` 显式检查 W gap `{1,3,2}`、R gap `{3,1,2}` |
 | BURST-10 | WLAST/RLAST 在期望尾拍出现 | 不早、不晚，响应仅在完整事务后产生 | ✅ burst 回归通过，协议 assertion 持续检查 |
 | BURST-11 | 负向：WLAST/RLAST 提前、缺失、超拍 | assertion 分别报告 EARLY/MISSING/COUNT_EXCESS | ✅ `axi_protocol_assertions_selftest` 已注入并通过 |
-| BURST-12 | 负向：非法 WRAP 长度/不对齐、保留 BURST=`2'b11`、超出总线宽度 SIZE | 协议 checker 明确报错 | ⬜ transaction 约束会阻止部分非法激励，但 assertion 尚无对应规则与自测 |
 
-### 3.5 READY 背压、稳定性与 FIFO
+### 3.5 READY 背压与稳定性
 
 | ID | 测试点与建议激励 | 预期结果/检查内容 | 状态与现有证据 |
 |---|---|---|---|
 | FLOW-01 | 分别让 AW/W/B/AR/R 出现长时间 READY=0 | 五通道均实际观察到 stall，最终无丢失/重复/死锁 | ✅ `axi_stage2_channel_stall_test` 对五通道做显式 stall 观测并通过 |
 | FLOW-02 | 五通道 READY 随机延迟 0~100 cycle，配合随机 W/R beat gap | 事务最终完成，payload 稳定，scoreboard 无误 | ✅ `axi_stage2_ready_random_smoke_test` 通过 |
 | FLOW-03 | `VALID=1 && READY=0` 时保持 AW/W/B/AR/R 的 VALID 与 payload | 直到握手前均稳定 | ✅ `axi_protocol_assertions` 对五通道启用稳定性检查；stall 回归通过 |
-| FLOW-04 | FIFO 空时读、满时写 | 空时不输出有效数据，满时反压上游，不 underflow/overflow | ⬜ RTL 有 full/empty 逻辑，但无独立或端到端边界定向测试 |
-| FLOW-05 | 每个通道 FIFO 连续写满 4 项、保持满、释放 1 项再继续写 | READY 在满时拉低，释放后恢复；顺序和数据保持 | ⚠️ outstanding 测试会达到深度 4，但未对 AW/W/B/AR/R 两侧所有 FIFO 做逐个容量检查 |
-| FLOW-06 | FIFO 同拍 push/pop、读写指针多次回绕 | 计数不跳变，数据不丢失/重复，full/empty 正确 | ⬜ 未实现 FIFO wrap-around/同拍边界专项测试 |
-| FLOW-07 | 多端口同时背压：3 Master/3 Slave 上分别随机 AW/W/AR/B/R READY | 各端口相互独立，无全局阻塞或错误串扰 | ⬜ Stage6 只在个别仲裁测试设置固定延迟，尚无系统级多端口随机背压回归 |
+| FLOW-04 | 多端口同时背压：3 Master/3 Slave 上分别随机 AW/W/AR/B/R READY | 各端口相互独立，无全局阻塞或错误串扰 | ⬜ Stage6 只在个别仲裁测试设置固定延迟，尚无系统级多端口随机背压回归 |
 
-### 3.6 Outstanding、乱序、保序与交织
+### 3.6 Outstanding、乱序与保序
 
 | ID | 测试点与建议激励 | 预期结果/检查内容 | 状态与现有证据 |
 |---|---|---|---|
@@ -120,9 +114,6 @@
 | ORD-08 | 3 个 Master 使用相同本地 4-bit ID 访问同一 Slave | 扩展 SID 区分来源 Master，响应不串端口 | ✅ `axi_stage6_cross_master_same_id_test` 通过 |
 | ORD-09 | 3 Master 各发 4 笔、跨 3 Slave 的读 outstanding | 12 笔请求正确路由和返回，无跨端口串扰 | ✅ `axi_stage6_multiport_outstanding_test` 通过 |
 | ORD-10 | 3 Master 各发多笔、跨 3 Slave 的写 outstanding | AW/W/B 在多端口高压力下正确，深度限制有效 | ⬜ Stage6 multiport outstanding 当前仅覆盖读 |
-| ORD-11 | AXI3 W 数据交织：同一 Master 的不同 WID 在 beat 间交替 | WID 对应的 AW 上下文正确，分别在各自尾拍 WLAST | ⬜ Master driver 当前按一个完整 W burst 连续发送，不能产生 beat 级 W interleaving |
-| ORD-12 | R 数据交织：同一 Master 的不同 RID 在 beat 间交替 | 每个 RID 独立计数与 RLAST，数据归属正确 | ⬜ Slave driver 当前按完整 R burst 发送，未生成 beat 级 R interleaving |
-| ORD-13 | SID buffer 满 4 项，同时发生清除与新事务进入 | 可接受能力与顺序正确，不错误反压、不漏记 SID | ⬜ 未实现 SID buffer 满边界/同拍 push-clear 专项测试 |
 
 ### 3.7 ID 编码、恢复和异常 ID
 
@@ -135,7 +126,6 @@
 | ID-05 | WID 高位目标编码与 AWADDR 目标一致 | W 数据只进入对应 AW 所在 Slave | ✅ 正向测试遵守并由 protocol assertion 检查 route/tag 一致性 |
 | ID-06 | 负向：AWADDR 与 AWID/WID 的 slave tag 不一致 | assertion 报 route/tag mismatch，不能静默送往错误 Slave | ✅ `axi_stage6_protocol_assertions_selftest` 已验证非法 master/slave tag 与 route mismatch 检查 |
 | ID-07 | 负向：没有 outstanding 上下文的 BID/RID，或 burst 中途改变 WID/RID | assertion 报 causality/no-pending/ID-stable 错误 | ✅ `axi_stage3_protocol_assertions_selftest` 已注入并通过 |
-| ID-08 | 向完整 DUT 注入不存在于 SID buffer 的下游 BID/RID | DUT 不把响应错误转发给任何 Master，checker 给出明确错误且系统不永久死锁 | ⬜ 仅有 assertion 单元自测，没有完整 DUT 负向注入用例 |
 
 ### 3.8 仲裁、并发与公平性
 
@@ -165,20 +155,14 @@
 | PROTO-08 | 非法 ID tag、物理 Slave tag 与端口不符、地址路由与 tag 不符 | assertion 给出明确分类错误 | ✅ Stage6 assertion 自测通过 |
 | PROTO-09 | round-robin grant 非 one-hot、无 request 获 grant、顺序错误、stall 切换、指针更新时机错误 | bind checker 报对应仲裁错误 | ✅ checker 与 `axi_stage6_arbiter_assertions_selftest` 已实现；同时已发现真实 RTL bug |
 
-### 3.10 随机、覆盖率与回归闭环
+### 3.10 随机与回归闭环
 
 | ID | 测试点与建议激励 | 预期结果/检查内容 | 状态与现有证据 |
 |---|---|---|---|
 | COV-01 | Master × Slave/Default × Read/Write 功能覆盖 | 3×4×2 路由交叉全部命中 | ⚠️ `axi_system_coverage` 已实现该 cross；正常 3×3×2 已命中，但 Default 只有 3 个组合被激励且用例当前失败 |
-| COV-02 | burst type × length × direction × port 路由覆盖 | FIXED/INCR/WRAP、1~16、读写及各路由均可量化关闭 | ⬜ 当前 functional coverage 没有 burst/length coverpoint |
-| COV-03 | SIZE × alignment × WSTRB 覆盖 | 窄传输、对齐/非对齐和合法 byte lane 组合可量化 | ⬜ 未实现对应 covergroup |
-| COV-04 | ID × outstanding depth × same/different ID × reorder 覆盖 | 深度 1~4、同 ID 重叠、不同 ID 乱序全部命中 | ⬜ checker 有计数器，但没有完整 functional coverage cross |
-| COV-05 | channel × stall length、FIFO occupancy/full/empty、同时 push/pop 覆盖 | 每通道关键流控状态均命中 | ⬜ 未实现 occupancy/backpressure functional coverage |
-| COV-06 | arbitration requester pattern × winner × stall × round index 覆盖 | 单路/双路/三路/四路竞争和轮询顺序可量化 | ⬜ 仅有 assertion，无仲裁 functional coverage |
-| COV-07 | OKAY/SLVERR/DECERR × B/R × port 覆盖 | 支持的响应类型和路径全部命中 | ⬜ 未实现响应 coverpoint，SLVERR 尚无测试 |
-| COV-08 | RTL code coverage 采集与报告 | statement/branch/condition/toggle/FSM 数据可生成并设置关闭目标 | ⚠️ Makefile 已支持 `cov=y` 和 `cov_report`，当前仓库未见本轮 UCDB/覆盖率关闭结果 |
+| COV-02 | RTL code coverage 采集与报告 | statement/branch/condition/toggle/FSM 数据可生成并设置关闭目标 | ⚠️ Makefile 已支持 `cov=y` 和 `cov_report`，当前仓库未见本轮 UCDB/覆盖率关闭结果 |
 | RAND-01 | 3 Master × 3 Slave 的轻量随机单拍读写 | 随机 ID/数据/方向下 reference model/scoreboard 无误 | ✅ `axi_stage6_random_smoke_test` 通过，但每个 Master×Slave 仅一笔 |
-| RAND-02 | 长时间约束随机：burst、SIZE、WSTRB、路由、outstanding、乱序响应、五通道随机背压 | 无死锁、无 pending、断言/scoreboard 全清，覆盖率持续增长 | ⬜ 当前没有系统级长随机压力测试 |
+| RAND-02 | 长时间约束随机：合法 burst、SIZE、WSTRB、路由、outstanding、事务级乱序响应和五通道随机背压 | 无死锁、无 pending、断言/scoreboard 全清 | ⬜ 当前 item/driver/responder 支持这些字段和延迟，但尚无系统级长随机 sequence/test |
 | REG-01 | Stage1/2/3/6 正向回归 | 全部测试出现 `AXI_TC_PASS`，UVM_ERROR/FATAL 均为 0 | ⚠️ 27 个已接入，最近 25 PASS；写仲裁和 Default Slave 两项失败 |
 | REG-02 | assertion/reference-model 自测回归 | 故障注入能被 checker 捕获，自测输出专用 PASS marker | ✅ 6 个自测目标最近均通过 |
 
@@ -186,6 +170,6 @@
 
 1. **P0：先修复当前红项**：round-robin 指针更新时机和 Default Slave 丢响应问题，恢复 `positive_regress` 全绿。
 2. **P0：补关键功能空洞**：地址首尾边界、Default 完整矩阵、跨端口多拍 burst、部分 WSTRB、窄传输/非对齐、SLVERR 传播。
-3. **P1：补高压力顺序场景**：多端口写 outstanding、W/R beat 交织、SID buffer/FIFO 满边界、持续 round-robin 公平性、四路响应竞争。
-4. **P1：补鲁棒性场景**：运行中复位、多端口随机背压、非法 4 KB crossing 与非法 burst 属性的 assertion 负向测试。
-5. **P2：覆盖率闭环**：增加 burst/length/size/ID/outstanding/arbitration/response/FIFO covergroup，执行带 code coverage 的多 seed 回归并给出关闭报告。
+3. **P1：补高压力顺序场景**：多端口写 outstanding、持续 round-robin 公平性、B 响应竞争和包含 Default 的四路响应竞争。
+4. **P1：补鲁棒性场景**：多端口随机背压以及基于当前合法 transaction 能力的长时间约束随机测试。
+5. **P2：覆盖率闭环**：执行当前已支持的功能覆盖和 RTL code coverage 多 seed 回归，并给出覆盖率关闭报告。

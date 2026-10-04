@@ -62,12 +62,6 @@ class axi_stage6_multiport_outstanding_test extends axi_stage6_base_test;
   virtual function axi_stage6_base_vseq create_vseq(); return axi_stage6_multiport_outstanding_vseq::type_id::create("vseq"); endfunction
 endclass
 
-class axi_stage6_default_slave_test extends axi_stage6_base_test;
-  `uvm_component_utils(axi_stage6_default_slave_test)
-  function new(string name="axi_stage6_default_slave_test", uvm_component parent=null); super.new(name,parent); expected_response_count=3; endfunction
-  virtual function axi_stage6_base_vseq create_vseq(); return axi_stage6_default_slave_vseq::type_id::create("vseq"); endfunction
-endclass
-
 class axi_stage6_random_smoke_test extends axi_stage6_base_test;
   `uvm_component_utils(axi_stage6_random_smoke_test)
   function new(string name="axi_stage6_random_smoke_test", uvm_component parent=null); super.new(name,parent); expected_response_count=9; endfunction

@@ -116,18 +116,6 @@ class axi_stage6_multiport_outstanding_vseq extends axi_stage6_base_vseq;
   endtask
 endclass
 
-class axi_stage6_default_slave_vseq extends axi_stage6_base_vseq;
-  `uvm_object_utils(axi_stage6_default_slave_vseq)
-  function new(string name="axi_stage6_default_slave_vseq"); super.new(name); endfunction
-  virtual task body();
-    fork
-      send_read(0, 3, 0);
-      send_write(1, 3, 1, 32'hdeff_0001);
-      send_read(2, 3, 2);
-    join
-  endtask
-endclass
-
 class axi_stage6_random_smoke_vseq extends axi_stage6_base_vseq;
   `uvm_object_utils(axi_stage6_random_smoke_vseq)
   function new(string name="axi_stage6_random_smoke_vseq"); super.new(name); endfunction

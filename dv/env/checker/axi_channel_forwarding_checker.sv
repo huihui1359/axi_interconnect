@@ -35,8 +35,6 @@ class axi_channel_forwarding_checker #(
     ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
   ) act_m_event[NUM_MASTERS][CHANNEL_COUNT][M_ID_COUNT][$];
 
-  int unsigned default_write_by_id[NUM_MASTERS][M_ID_COUNT];
-  int unsigned default_read_beats[NUM_MASTERS][M_ID_COUNT][$];
   axi_switch_ref_model #(ADDR_WIDTH, M_ID_WIDTH, S_ID_WIDTH) map;
   bit enabled;
   int unsigned mismatch_count;
@@ -176,8 +174,6 @@ task axi_channel_forwarding_checker::process_master_events(
   axi_route_e route;
   int signed slave_index;
   int unsigned id;
-  int unsigned beats_left;
-  bit expected_last;
 
   forever begin
     m_event_fifo[master_index].get(item);
@@ -193,11 +189,10 @@ task axi_channel_forwarding_checker::process_master_events(
         route = map.decode_address(snapshot.addr);
         slave_index = route_to_index(route);
         if (slave_index < 0) begin
-          if (snapshot.channel == AXI_CHANNEL_AW)
-            default_write_by_id[master_index][id]++;
-          else
-            default_read_beats[master_index][id].push_back(
-              int'(snapshot.len) + 1);
+          mismatch_count++;
+          `uvm_error("AXI_CHK_UNMAPPED_ADDR", $sformatf(
+            "M%0d Stage 6 %s event uses unmapped address 0x%0h",
+            master_index, snapshot.channel.name(), snapshot.addr))
         end
         else begin
           expected = transform_request_event(master_index,
@@ -210,61 +205,32 @@ task axi_channel_forwarding_checker::process_master_events(
       end
 
       AXI_CHANNEL_W: begin
-        if (default_write_by_id[master_index][id] == 0) begin
-          route = map.decode_w_target(snapshot.id);
-          slave_index = route_to_index(route);
-          if (slave_index < 0) begin
-            mismatch_count++;
-            `uvm_error("AXI_CHK_W_ROUTE", $sformatf(
-              "M%0d W event ID 0x%0h has no legal destination",
-              master_index, snapshot.id))
-          end
-          else begin
-            expected = transform_request_event(master_index,
-                                               slave_index, snapshot);
-            exp_s_event[slave_index][int'(AXI_CHANNEL_W)]
-                       [int'(expected.id)].push_back(expected);
-            match_slave_event(slave_index, AXI_CHANNEL_W,
-                              int'(expected.id));
-          end
+        route = map.decode_w_target(snapshot.id);
+        slave_index = route_to_index(route);
+        if (slave_index < 0) begin
+          mismatch_count++;
+          `uvm_error("AXI_CHK_W_ROUTE", $sformatf(
+            "M%0d W event ID 0x%0h has no legal destination",
+            master_index, snapshot.id))
+        end
+        else begin
+          expected = transform_request_event(master_index,
+                                             slave_index, snapshot);
+          exp_s_event[slave_index][int'(AXI_CHANNEL_W)]
+                     [int'(expected.id)].push_back(expected);
+          match_slave_event(slave_index, AXI_CHANNEL_W,
+                            int'(expected.id));
         end
       end
 
       AXI_CHANNEL_B: begin
-        if (default_write_by_id[master_index][id] != 0) begin
-          default_write_by_id[master_index][id]--;
-          if (snapshot.resp_raw !== AXI_RESP_DECERR) begin
-            mismatch_count++;
-            `uvm_error("AXI_CHK_DEFAULT_B", "Default write did not return DECERR")
-          end
-        end
-        else begin
-          act_m_event[master_index][int'(AXI_CHANNEL_B)][id].push_back(snapshot);
-          match_master_event(master_index, AXI_CHANNEL_B, id);
-        end
+        act_m_event[master_index][int'(AXI_CHANNEL_B)][id].push_back(snapshot);
+        match_master_event(master_index, AXI_CHANNEL_B, id);
       end
 
       AXI_CHANNEL_R: begin
-        if (default_read_beats[master_index][id].size() != 0) begin
-          beats_left = default_read_beats[master_index][id][0];
-          expected_last = (beats_left == 1);
-          if ((snapshot.resp_raw !== AXI_RESP_DECERR) ||
-              (snapshot.data !== {DATA_WIDTH{1'b1}}) ||
-              (snapshot.last !== expected_last)) begin
-            mismatch_count++;
-            `uvm_error("AXI_CHK_DEFAULT_R", $sformatf(
-              "M%0d default R payload/last mismatch: %s",
-              master_index, snapshot.convert2string()))
-          end
-          if (beats_left == 1)
-            void'(default_read_beats[master_index][id].pop_front());
-          else
-            default_read_beats[master_index][id][0] = beats_left - 1;
-        end
-        else begin
-          act_m_event[master_index][int'(AXI_CHANNEL_R)][id].push_back(snapshot);
-          match_master_event(master_index, AXI_CHANNEL_R, id);
-        end
+        act_m_event[master_index][int'(AXI_CHANNEL_R)][id].push_back(snapshot);
+        match_master_event(master_index, AXI_CHANNEL_R, id);
       end
     endcase
   end
@@ -381,10 +347,6 @@ function int unsigned axi_channel_forwarding_checker::pending_count();
   foreach (exp_m_event[port, channel, id]) begin
     total += exp_m_event[port][channel][id].size();
     total += act_m_event[port][channel][id].size();
-  end
-  foreach (default_write_by_id[port, id]) begin
-    total += default_write_by_id[port][id];
-    total += default_read_beats[port][id].size();
   end
   return total;
 endfunction

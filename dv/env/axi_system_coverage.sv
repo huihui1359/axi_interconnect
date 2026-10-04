@@ -23,10 +23,7 @@ class axi_system_coverage #(
   covergroup system_cg;
     option.per_instance = 1;
     cp_master: coverpoint sampled_master { bins ports[] = {[0:2]}; }
-    cp_slave: coverpoint sampled_slave {
-      bins normal[] = {[0:2]};
-      bins default_route = {3};
-    }
+    cp_slave: coverpoint sampled_slave { bins normal[] = {[0:2]}; }
     cp_dir: coverpoint sampled_dir;
     master_x_slave_x_dir: cross cp_master, cp_slave, cp_dir;
   endgroup
@@ -87,7 +84,12 @@ task axi_system_coverage::collect_master_requests(
       AXI_ROUTE_S0: sampled_slave = 0;
       AXI_ROUTE_S1: sampled_slave = 1;
       AXI_ROUTE_S2: sampled_slave = 2;
-      default: sampled_slave = 3;
+      default: begin
+        `uvm_error("AXI_COV_UNMAPPED_ADDR", $sformatf(
+          "M%0d Stage 6 coverage observed unmapped address 0x%0h",
+          master_index, req.addr))
+        continue;
+      end
     endcase
     system_cg.sample();
   end

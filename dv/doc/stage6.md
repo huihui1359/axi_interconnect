@@ -56,7 +56,7 @@ Stage 6在保留Stage 3通道能力的前提下，将验证环境扩展为完整
 
 Stage 6分为两个连续实施阶段：
 
-1. **Stage 6A：环境和检查组件扩展。** 完成三主三从TB、Env、Cfg、Virtual Sequencer、系统Reference Model、System Scoreboard、Channel Checker、Tracker阵列、Coverage Collector、bind仲裁Checker、package/filelist和编译入口。Stage 6A必须通过代码审核、编译和elaboration。
+1. **Stage 6A：环境和检查组件扩展。** 完成三主三从TB、Env、Cfg、Virtual Sequencer、系统Reference Model、System Scoreboard、Channel Checker、Tracker阵列、System Coverage、bind仲裁Checker、package/filelist和编译入口。Stage 6A必须通过代码审核、编译和elaboration。
 2. **Stage 6B：系统场景和冻结验收。** 完成路由矩阵、ID矩阵、多端口并行、同Slave竞争、响应竞争、跨Master相同ID、多端口outstanding、随机smoke和负向自测，并运行Stage 1～3兼容回归。Default Slave场景不属于本阶段验收。
 
 Stage 6A编译通过只表示三主三从结构可以进入测试，不表示路由、仲裁、ID或跨端口Scoreboard已经验证正确；Default路径不在Stage 6验证结论内。
@@ -298,7 +298,7 @@ rsp_ap
 - Monitor每次发布新对象，发布后不得修改。
 - Reference Model从FIFO取出对象后先clone，再生成expected对象。
 - Scoreboard从FIFO取出对象后先clone，再存入按键队列。
-- Channel Checker和Coverage Collector需要长期保存对象时也必须clone。
+- Channel Checker和System Coverage需要长期保存对象时也必须clone。
 - analysis port允许连接多个analysis export，实现Tracker、Checker和Coverage并行订阅。
 
 ## 5. S6-04：Virtual Sequencer和Virtual Sequence
@@ -704,7 +704,7 @@ Master到Slave的AW/W/AR和Slave到Master的B/R分别使用适配宽度的Checke
 
 ## 14. S6-13：Functional Coverage
 
-新增Stage 6 Coverage Collector，事务级采样来源只能是Monitor event/req/rsp。轮询仲裁覆盖由bind Checker在内部request/grant观察点独立采样，不通过非标准TLM回传内部RTL状态。
+Stage 6功能覆盖目标如下。当前代码中的`axi_system_coverage`只从Master Monitor完整request采样`master × slave × direction`；其余计划bin和bind仲裁覆盖的实现状态以第22节为准，不得通过非标准TLM回传内部RTL状态。
 
 至少覆盖：
 
@@ -731,33 +731,154 @@ Stage 6定向回归必须命中所有Stage 6计划功能bin。Stage 4交织和St
 
 ## 15. S6-14：组件架构总览
 
-Stage 6新增或扩展的检查路径：
+> 当前实现快照（2026-10-05）：本节框图和第24节连接表描述当前代码中的实际连接。Stage 6仅实例化并激励M0～M2和S0～S2；Default Slave验证不在本图范围内。
+
+### 15.1 传统UVM层次和总体验证环境框图
+
+图中`analysis`表示`uvm_analysis_port -> uvm_tlm_analysis_fifo.analysis_export`广播连接，`seq_item`表示Driver与Sequencer之间的标准sequence item连接，`handle`表示普通对象句柄赋值，`vif`表示class组件通过virtual interface访问静态接口。Virtual Sequence和子Sequence是运行期对象，不是Env的component子节点。
 
 ~~~text
-Master Monitor req_ap
-        │
-        ▼
-System Reference Model
-        │ expected Slave request
-        ▼
-System Scoreboard ◄──────── Slave Monitor req_ap(actual)
-
-Slave Monitor rsp_ap
-        │
-        ▼
-System Reference Model
-        │ expected Master response
-        ▼
-System Scoreboard ◄──────── Master Monitor rsp_ap(actual)
-
-Master/Slave Monitor channel_ap
-        ├── Channel Forwarding Checker
-        ├── per-port Outstanding Tracker
-        └── Stage 6 Coverage Collector
-
-RTL internal req/grant/ready/valid
-        └── bind Round-Robin Checker
+ +--------------------------------------------------------------------------+
+ | uvm_test_top : axi_stage6_*_test                                         |
+ |                                                                          |
+ |   axi_stage6_*_vseq                                                      |
+ |           │ start(env.virtual_sequencer)                                 |
+ +-----------│--------------------------------------------------------------+
+             ▼
+ +=========================== axi_env ======================================+
+ |                                                                          |
+ |  +--------------------------+                                            |
+ |  | axi_virtual_sequencer    |                                            |
+ |  | m_seqr[0..2]             |··handle··> Master Agent sequencer          |
+ |  | s_seqr[0..2]             |··handle··> Slave Agent sequencer           |
+ |  +--------------------------+                                            |
+ |                                                                          |
+ |  +---------- m_agents[0..2] ---------+   +---------- s_agents[0..2] ----+ |
+ |  |                                   |   |                              | |
+ |  | [M Sequencer] ==seq_item==>       |   | [S Sequencer] ==seq_item==> | |
+ |  |                         [M Driver] |   |                  [S Driver] | |
+ |  |                              │vif  |   |                       │vif  | |
+ |  | [M Monitor]                  │     |   | [S Monitor]           │     | |
+ |  |      │ req_ap/rsp_ap/channel_ap   |   |      │ req_ap/rsp_ap/channel_ap|
+ |  +------│----------------------------+   +------│-----------------------+ |
+ |         │                                     │                         |
+ |         │                                     ├─analysis─>              |
+ |         │                                     │ S Sequencer.request_fifo|
+ |         │                                     │      │ get()             |
+ |         │                                     │      ▼                   |
+ |         │                                     │ Slave Reactive Sequence |
+ |         │                                     │                          |
+ |  +------▼-------------------------------------▼-------------------------+ |
+ |  |                  Stage 6检查与覆盖平面                              | |
+ |  |                                                                        | |
+ |  | [axi_system_ref_model] ──expected──> [axi_system_scoreboard]          | |
+ |  |        └─ [axi_switch_ref_model mapping core]       ▲ actual          | |
+ |  |                                                     │                 | |
+ |  | [axi_channel_forwarding_checker] <── channel_ap ────┤                 | |
+ |  | [m_trackers[0..2] / s_trackers[0..2]] <─ channel_ap┤                 | |
+ |  | [axi_system_coverage] <────────────── Master req_ap ┘                 | |
+ |  +---------------------------------------------------------------------+ |
+ +==========================================================================+
+             │ M Driver/M Monitor vif                     │ S Driver/S Monitor vif
+             ▼                                            ▼
+ +----------------------+                     +----------------------+
+ | m_if[0..2]           |<====== AXI ========>|                      |
+ +----------------------+                     |  DUT                 |
+                                              |  axi_interconnect    |
+ +----------------------+                     |                      |
+ | s_if[0..2]           |<====== AXI ========>|                      |
+ +----------------------+                     +----------+-----------+
+             │                                              │
+             │ interface observation                        │ bind observation
+             ▼                                              ▼
+ +---------------------------+                  +-----------------------------+
+ | axi_protocol_assertions   |                  | axi_stage6_rr_pointer_checker|
+ | 六接口协议检查（非TLM）   |                  | req/grant/ready/pointer/lock |
+ +---------------------------+                  | 仲裁检查（非TLM、非Env组件）|
+                                                +-----------------------------+
 ~~~
+
+M Agent和S Agent各实例化3份，每个Agent保持传统的Sequencer、Driver和Monitor结构。Driver通过vif驱动接口，Monitor通过vif只观察接口并由analysis port广播；Reference Model、Scoreboard、Channel Checker、Tracker和Coverage均位于Env中且不得驱动DUT。`axi_stage6_rr_pointer_checker`通过SystemVerilog `bind`进入RTL仲裁层次，它属于静态断言/Checker模块，不是`uvm_component`，也不参与Env的TLM连接。
+
+框图的数据流向简述如下：
+
+1. **控制流：** Stage 6 Test创建Virtual Sequence并启动到Virtual Sequencer；Virtual Sequencer通过保存的子Sequencer句柄，把Master请求Sequence和Slave Reactive Sequence调度到指定端口。
+2. **请求激励流：** Master Sequence经M Sequencer和M Driver转换为AXI信号，从`m_if[i]`进入DUT；DUT完成路由和仲裁后，从目标`s_if[j]`输出请求。
+3. **响应激励流：** S Monitor重建目标Slave收到的完整请求，并通过`request_fifo`交给Slave Reactive Sequence；该Sequence生成响应，经S Sequencer和S Driver从`s_if[j]`送回DUT，最终由DUT返回对应`m_if[i]`。
+4. **事务检查流：** M Monitor采集的请求先进入Reference Model生成expected Slave request，S Monitor采集的实际请求直接作为actual；S Monitor采集的响应先进入Reference Model生成expected Master response，M Monitor采集的实际响应直接作为actual，两组expected/actual均在System Scoreboard中比较。
+5. **并行检查流：** 两侧Monitor的`channel_ap`同时广播给Channel Checker和各端口Tracker，Master完整request还广播给System Coverage；接口协议断言直接观察六个interface，仲裁Checker通过bind观察DUT内部仲裁信号，这两条信号级检查路径都不经过TLM。
+
+### 15.2 完整事务检查数据流
+
+请求方向：
+
+~~~text
+m_agents[i].monitor.req_ap
+        ├─analysis─> ref_model.m_req_fifo[i]
+        │                 │ 地址译码、4-bit MID扩展为8-bit SID
+        │                 ▼
+        │            ref_model.s_req_ap[j]
+        │                 │ analysis（expected）
+        │                 ▼
+        │       scoreboard.exp_s_req_fifo[j]
+        │
+        └─analysis─> coverage.m_req_fifo[i]
+
+s_agents[j].monitor.req_ap
+        ├─analysis─> scoreboard.act_s_req_fifo[j]（actual）
+        └─analysis─> s_agents[j].sequencer.request_fifo
+                              │ get()
+                              ▼
+                      Slave Reactive Sequence
+~~~
+
+响应方向：
+
+~~~text
+s_agents[j].monitor.rsp_ap
+        └─analysis─> ref_model.s_rsp_fifo[j]
+                          │ 检查SID/物理端口/请求因果，恢复4-bit MID
+                          ▼
+                    ref_model.m_rsp_ap[i]
+                          │ analysis（expected）
+                          ▼
+                scoreboard.exp_m_rsp_fifo[i]
+
+m_agents[i].monitor.rsp_ap
+        └─analysis─> scoreboard.act_m_rsp_fifo[i]（actual）
+~~~
+
+System Scoreboard只比较完整事务：请求按`{slave_port, direction, 8-bit SID}`分键，响应按`{master_port, direction, 4-bit MID}`分键；同键FIFO保序，不同键允许因并行、仲裁和AXI不同ID乱序而改变完成顺序。
+
+### 15.3 逐通道event、outstanding和仲裁数据流
+
+~~~text
+m_agents[i].monitor.channel_ap
+        ├─analysis─> channel_checker.m_event_fifo[i]
+        └─analysis─> m_trackers[i].channel_fifo
+
+s_agents[j].monitor.channel_ap
+        ├─analysis─> channel_checker.s_event_fifo[j]
+        └─analysis─> s_trackers[j].channel_fifo
+
+RTL internal arbitration signals
+        └─bind─> axi_stage6_rr_pointer_checker
+~~~
+
+- Channel Checker比较AW/W/B/AR/R真实握手event的端到端转发关系。
+- 六个Tracker分别依据所属物理端口的真实握手event维护outstanding。
+- 当前`axi_system_coverage`只订阅Master完整request，采样`master × slave × direction`；它不订阅`channel_ap`。
+- 仲裁Checker通过bind读取RTL内部信号，不使用analysis port或TLM FIFO，也不向Scoreboard发布expected事务。
+
+### 15.4 TLM连接约束
+
+- Monitor对外只使用既有`req_ap`、`rsp_ap`和`channel_ap`三个`uvm_analysis_port`。
+- 每个消费者持有独立的`uvm_tlm_analysis_fifo`；一个analysis port可以广播到多个FIFO，但多个消费者不得共享同一FIFO实例。
+- Reference Model输出只使用`s_req_ap[j]`和`m_rsp_ap[i]`两个`uvm_analysis_port`数组。
+- Driver只通过`seq_item_port.connect(sequencer.seq_item_export)`取得sequence item，不从Reference Model或Scoreboard取数据。
+- Virtual Sequencer中的`m_seqr[]`和`s_seqr[]`由Env直接赋句柄，不声明为analysis/TLM端口。
+- Mapping Core `axi_switch_ref_model`是无状态`uvm_object`，由Reference Model、Channel Checker和Coverage在组件内部直接调用，不参与TLM连接。
+- bind仲裁Checker和接口协议断言只观察信号，不得通过TLM回灌或驱动验证事务。
 
 各组件职责必须相互独立，不允许通过读取其他组件私有状态形成隐式耦合。
 
@@ -1116,18 +1237,17 @@ AXI_ARB_WRONG_NEXT_WINNER
 AXI_ARB_FAIRNESS_TIMEOUT
 ~~~
 
-## 22. S6-21：Coverage Collector
+## 22. S6-21：System Coverage
 
-新增`axi_stage6_coverage_collector`：
+当前实现为`axi_system_coverage`：
 
-- 使用标准analysis FIFO订阅六个Monitor的event/req/rsp。
-- 不读取Driver、sequence或Scoreboard私有状态。
-- 不影响测试流控。
-- 按端口、路由、ID、方向、深度和事务并行组合采样。
-- 提供每个计划bin的命中摘要。
-- `cov=0`时允许关闭数据库保存，但功能bin计数器仍可用于定向测试自检。
+- 使用`m_req_fifo[0..2]`订阅三个Master Monitor的完整request。
+- 根据request来源端口、地址译码结果和读写方向采样`master × slave × direction`。
+- 未映射地址报告`AXI_COV_UNMAPPED_ADDR`且不采样。
+- 不订阅Master response、Slave request/response或六端口`channel_ap`。
+- 不读取Driver、sequence、Reference Model或Scoreboard私有状态，也不影响测试流控。
 
-内部轮询request/grant/winner覆盖由bind Checker自己的covergroup采样，Coverage Collector不通过层次引用读取RTL内部信号。
+ID、outstanding深度、并行端口数和仲裁相关计划bin尚未在当前`axi_system_coverage`中实现。当前bind仲裁Checker负责功能检查，但尚未建立仲裁covergroup；这些内容属于Stage 6 coverage closure的待补充项。
 
 ## 23. S6-22：Env、Cfg和Checker选择
 
@@ -1146,7 +1266,7 @@ System Reference Model
 System Scoreboard
 Channel Forwarding Checker
 六个Outstanding Tracker
-Stage 6 Coverage Collector
+Stage 6 System Coverage
 bind仲裁Checker
 六接口协议断言
 ~~~
@@ -1166,21 +1286,23 @@ Env在build阶段创建六个agent和Stage 6组件，在connect阶段完成标�
 
 ## 24. S6-23：完整TLM连接表
 
+下表与当前`axi_env::connect_phase()`、Master/Slave Agent的`connect_phase()`保持一致。`i`和`j`均取`0..2`，分别表示Master和Slave物理端口。
+
 ### 24.1 Request expected路径
 
 ~~~text
 m_agents[i].monitor.req_ap
-  -> system_ref_model.m_req_fifo[i].analysis_export
+  -> ref_model.m_req_fifo[i].analysis_export
 
-system_ref_model.s_req_ap[j]
-  -> system_scoreboard.exp_s_req_fifo[j].analysis_export
+ref_model.s_req_ap[j]
+  -> scoreboard.exp_s_req_fifo[j].analysis_export
 ~~~
 
 ### 24.2 Request actual路径
 
 ~~~text
 s_agents[j].monitor.req_ap
-  -> system_scoreboard.act_s_req_fifo[j].analysis_export
+  -> scoreboard.act_s_req_fifo[j].analysis_export
 
 s_agents[j].monitor.req_ap
   -> s_agents[j].sequencer.request_fifo.analysis_export
@@ -1190,17 +1312,17 @@ s_agents[j].monitor.req_ap
 
 ~~~text
 s_agents[j].monitor.rsp_ap
-  -> system_ref_model.s_rsp_fifo[j].analysis_export
+  -> ref_model.s_rsp_fifo[j].analysis_export
 
-system_ref_model.m_rsp_ap[i]
-  -> system_scoreboard.exp_m_rsp_fifo[i].analysis_export
+ref_model.m_rsp_ap[i]
+  -> scoreboard.exp_m_rsp_fifo[i].analysis_export
 ~~~
 
 ### 24.4 Response actual路径
 
 ~~~text
 m_agents[i].monitor.rsp_ap
-  -> system_scoreboard.act_m_rsp_fifo[i].analysis_export
+  -> scoreboard.act_m_rsp_fifo[i].analysis_export
 ~~~
 
 ### 24.5 Event路径
@@ -1209,35 +1331,39 @@ m_agents[i].monitor.rsp_ap
 m_agents[i].monitor.channel_ap
   -> m_trackers[i].channel_fifo.analysis_export
   -> channel_checker.m_event_fifo[i].analysis_export
-  -> coverage_collector.m_event_fifo[i].analysis_export
 
 s_agents[j].monitor.channel_ap
   -> s_trackers[j].channel_fifo.analysis_export
   -> channel_checker.s_event_fifo[j].analysis_export
-  -> coverage_collector.s_event_fifo[j].analysis_export
 ~~~
 
 每个箭头表示独立connect；analysis port广播到多个消费者，每个消费者使用自己的FIFO。
 
-### 24.6 Coverage transaction路径
+### 24.6 System Coverage路径
 
 ~~~text
 m_agents[i].monitor.req_ap
-  -> coverage_collector.m_req_fifo[i].analysis_export
-
-m_agents[i].monitor.rsp_ap
-  -> coverage_collector.m_rsp_fifo[i].analysis_export
-
-s_agents[j].monitor.req_ap
-  -> coverage_collector.s_req_fifo[j].analysis_export
-
-s_agents[j].monitor.rsp_ap
-  -> coverage_collector.s_rsp_fifo[j].analysis_export
+  -> coverage.m_req_fifo[i].analysis_export
 ~~~
 
-Coverage Collector的每个输入FIFO独立于Reference Model、Scoreboard、Tracker和Channel Checker使用的FIFO。
+当前System Coverage没有其他TLM输入。`coverage.m_req_fifo[i]`独立于Reference Model使用的同源FIFO；analysis port广播时会把同一个Monitor事务分别送入两个消费者。
 
-### 24.7 禁止连接
+### 24.7 Sequence item连接和Sequencer句柄
+
+~~~text
+m_agents[i].driver.seq_item_port
+  -> m_agents[i].sequencer.seq_item_export
+
+s_agents[j].driver.seq_item_port
+  -> s_agents[j].sequencer.seq_item_export
+
+virtual_sequencer.m_seqr[i] = m_agents[i].sequencer
+virtual_sequencer.s_seqr[j] = s_agents[j].sequencer
+~~~
+
+前两条是UVM sequencer-driver TLM连接。后两条是普通句柄赋值，只用于让Virtual Sequence定位子Sequencer，不是TLM连接。Slave Reactive Sequence还会从`s_agents[j].sequencer.request_fifo`执行`get()`取得Slave Monitor重建的完整request，再通过标准sequence item路径把response交给Slave Driver。
+
+### 24.8 禁止连接
 
 - Master request不得直接进入System Scoreboard作为expected。
 - Slave response不得直接进入System Scoreboard作为expected。
@@ -1253,7 +1379,7 @@ Coverage Collector的每个输入FIFO独立于Reference Model、Scoreboard、Tra
 dv/env/axi_system_ref_model.sv
 dv/env/checker/axi_system_scoreboard.sv
 dv/env/checker/axi_channel_forwarding_checker.sv
-dv/env/axi_stage6_coverage_collector.sv
+dv/env/axi_system_coverage.sv
 dv/env/axi_virtual_sequencer.sv
 dv/env/axi_stage6_arbiter_assertions.sv
 

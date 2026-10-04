@@ -36,8 +36,6 @@ module axi_stage6_ref_model_selftest;
 
     assert (model.decode_master(8'hc0) == -1)
       else $fatal(1, "Illegal 00 master tag was accepted");
-    assert (model.decode_address(32'h0000_8000) == AXI_ROUTE_DEFAULT)
-      else $fatal(1, "Default route decode failed");
     assert (model.decode_w_target(4'h0) == AXI_ROUTE_INVALID)
       else $fatal(1, "Illegal write target was accepted");
 

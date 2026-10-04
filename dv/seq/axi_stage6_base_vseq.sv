@@ -20,7 +20,12 @@ class axi_stage6_base_vseq extends uvm_sequence;
       0: return 32'h0000_0100;
       1: return 32'h0000_2100;
       2: return 32'h0000_4100;
-      default: return 32'h0000_8000;
+      default: begin
+        `uvm_fatal("AXI_STAGE6_ROUTE", $sformatf(
+          "Stage 6 does not support slave index %0d; use S0/S1/S2 only",
+          slave_index))
+        return '0;
+      end
     endcase
   endfunction
 
@@ -29,7 +34,12 @@ class axi_stage6_base_vseq extends uvm_sequence;
       0: return AXI_ROUTE_S0;
       1: return AXI_ROUTE_S1;
       2: return AXI_ROUTE_S2;
-      default: return AXI_ROUTE_DEFAULT;
+      default: begin
+        `uvm_fatal("AXI_STAGE6_ROUTE", $sformatf(
+          "Stage 6 does not support slave index %0d; use S0/S1/S2 only",
+          slave_index))
+        return AXI_ROUTE_INVALID;
+      end
     endcase
   endfunction
 
@@ -43,8 +53,6 @@ class axi_stage6_base_vseq extends uvm_sequence;
     bit [AXI_DATA_WIDTH-1:0] target_data;
 
     target_id = map.build_master_id(index_route(slave_index), tag);
-    if (slave_index >= AXI_ENV_NUM_SLAVES)
-      target_id = {2'b01, tag};
     target_addr = route_address(slave_index);
     target_data = data;
 
@@ -66,8 +74,6 @@ class axi_stage6_base_vseq extends uvm_sequence;
     bit [AXI_ADDR_WIDTH-1:0] target_addr;
 
     target_id = map.build_master_id(index_route(slave_index), tag);
-    if (slave_index >= AXI_ENV_NUM_SLAVES)
-      target_id = {2'b01, tag};
     target_addr = route_address(slave_index);
 
     `uvm_do_on_with(seq, p_sequencer.m_seqr[master_index], {
