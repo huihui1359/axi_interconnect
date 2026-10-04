@@ -1,5 +1,14 @@
 # Crossbar、路由与仲裁微架构
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 crossbar 路由与仲裁微架构，描述 3×3/default 请求平面、四来源响应平面、SID 构造、仲裁锁定与已知风险。
+
+---
+
 ## 1. `axi_crossbar`
 
 ### 1.1 目的和层次
@@ -82,4 +91,3 @@ B、R 各有 RUN/WAIT 状态和保存 grant。逻辑与 M→S 仲裁同构。R �
 - W 路由依赖 WID 高位而不是关联 AW 的内部目标记录。
 - R/W 仲裁不锁整个 burst。
 - 所有模块 assertion 数为 0；无 one-hot、stable-under-stall、window-disjoint 检查。
-

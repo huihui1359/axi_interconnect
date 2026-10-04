@@ -1,5 +1,14 @@
 # AXI Interconnect RTL 文档索引
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 RTL 文档索引，汇总架构、微架构、结构图、层次关系和验证计划入口，并声明反向提取范围与证据边界。
+
+---
+
 本目录文档基于 `../*.v` 的 RTL 反向提取，描述的是当前实现，而不是未经验证的设计意图。标有 **TOVERIFY** 的内容需要由原设计者确认。
 
 ## 规格文档

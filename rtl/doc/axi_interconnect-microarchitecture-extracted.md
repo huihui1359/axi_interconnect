@@ -1,5 +1,14 @@
 # AXI Interconnect 整体微架构（RTL 反向提取）
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 RTL 反向提取整体微架构，整理模块层次、缓冲结构、接口契约、时序风险、前向进展和模块职责。
+
+---
+
 > 当前实现基线：`axi_interconnect`，3 initiators × 3 targets，单时钟域。带 **TOVERIFY** 的结论无法仅由 RTL 确认为设计意图。
 
 ## 1. 概述与设计目标

@@ -1,5 +1,14 @@
 # `axi_interconnect` 顶层与边界 FIFO 微架构
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版顶层与边界 FIFO 微架构，描述参数、端口、30 个 FIFO、SID 门控路径、反压组合、流水和结构风险。
+
+---
+
 ## 1. 职责与边界
 
 `axi_interconnect` 是综合顶层。它把 3 组数组化上游端口和 3 组数组化下游端口接入 `axi_crossbar`，在每个通道的两侧插入 FIFO，并在交叉开关旁路上维护读/写 outstanding SID。

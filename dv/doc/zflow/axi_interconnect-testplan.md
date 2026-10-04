@@ -1,5 +1,14 @@
 # AXI Interconnect 验证计划
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 AXI interconnect 验证计划，定义 F01–F29、定向与约束随机策略、接口/FSM/缓冲验证、负测、stress、performance 和 coverage closure 标准。
+
+---
+
 ## 1. Overview
 
 验证对象为 `axi_interconnect`：默认配置下 3 个 `M_AXI_*` 发起端、3 个 `S_AXI_*` 目标端、单 `AXI_CLK` 时钟域的 AXI3 风格交叉开关。

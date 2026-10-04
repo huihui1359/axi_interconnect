@@ -1,5 +1,14 @@
 # AXI 互连验证环境图
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版现有 testbench 环境图，提取实例拓扑、文件与实例位置、DUT 接口穿越、控制旋钮和可观测性缺口。
+
+---
+
 ## 来源信息
 
 | 字段 | 值 |

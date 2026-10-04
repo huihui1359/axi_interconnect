@@ -1,5 +1,14 @@
 # AXI Interconnect 现有验证与 Testplan 对照审查
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版现有验证与 testplan 对照审查，评估测试实现完整性、结果检查、刺激正确性、方法学和 feature traceability。
+
+---
+
 ## 1. 审查范围与结论
 
 本审查依据 `axi_interconnect-testplan.md`、RTL 反向提取的架构/微架构文档，以及当前 `dv/`、`sim/`、`sim_vcs/` 下的 UVM 测试、序列、driver、monitor、checker、reference model、coverage、assertion 和构建清单完成。审查方法为静态代码对照；本次未运行仿真，因此“已有测试通过”不是本报告的结论。

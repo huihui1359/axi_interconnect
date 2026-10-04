@@ -1,5 +1,14 @@
 # 默认从设备与基础单元微架构
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版默认从设备与基础单元微架构，描述 default read/write FSM、同步 FIFO、轮询原语、握手语义和实现风险。
+
+---
+
 ## 1. `axi_default_slave`
 
 ### 1.1 目的与接口
@@ -65,4 +74,3 @@
 ## 5. 仲裁原语的使用约束
 
 由于轮询器没有 ready/accept 输入，调用者必须在反压时保存 grant；两个 `axi_arbiter_*` 正是这样做的。若未来独立复用轮询器，不得假设 `last_winner` 表示“最后成功服务者”，它只表示“最后一次组合选中者”。两个原语 assertion 数均为 0。
-

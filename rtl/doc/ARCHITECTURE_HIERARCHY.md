@@ -1,7 +1,11 @@
 # AXI Interconnect RTL 层次结构说明
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar Medium
-**Created**: 2026-09-27?
+**Created**: 2026-09-27 ??:??
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-09-27 ??:??): 初版 RTL 层次结构说明，整理完整例化树、各层职责、五通道路径、源文件索引和静态结构限制。
 
 ---
 

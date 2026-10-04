@@ -1,5 +1,14 @@
 # AXI Interconnect 架构规格（RTL 反向提取）
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 RTL 反向提取架构规格，定义功能、并发、时钟复位、流控、存储排序、配置、性能、错误模型和风险边界。
+
+---
+
 > **来源：** 仅依据当前 RTL 提取。本文描述“实现了什么”；实现机制详见微架构文档。所有设计意图、性能目标与协议完备性推断均标记 **TOVERIFY**。
 
 ## 1. 问题陈述

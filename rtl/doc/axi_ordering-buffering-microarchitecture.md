@@ -1,5 +1,14 @@
 # Outstanding-ID 跟踪微架构
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版 outstanding-ID 跟踪微架构，澄清 sid_buffer/reorder 的集合过滤语义、push/clear 算法、顺序契约和资源风险。
+
+---
+
 ## 1. 命名与真实语义
 
 RTL 将 `sid_buffer + reorder` 注释为 transaction reorder。实际实现没有 sequence number、head-only grant、数据暂存或重排输出；它维护一个最多 4 项的 ID 集合，并注册产生“候选 ID 是否属于集合”的资格位。因此本文称其为 outstanding-ID tracker/filter。

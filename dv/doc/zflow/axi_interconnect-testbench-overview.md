@@ -1,5 +1,14 @@
 # AXI 互连 UVM 验证环境概览
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版现有 UVM 验证环境概览，记录环境层次、agents、sequence、checker、reference model、coverage 与构建运行方式。
+
+---
+
 ## 1. 目的与来源基线
 
 本文档描述 `dv/` 下实际实现的验证环境，是实现概览，不代表尚未实现的 testplan 目标。

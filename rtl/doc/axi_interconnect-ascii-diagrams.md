@@ -1,5 +1,14 @@
 # AXI Interconnect 字符结构图与数据流说明
 
+**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Created**: 2026-10-04 20:10
+**Current Version**: v1.0
+
+**Version Changelog**:
+- **v1.0** (2026-10-04 20:10): 初版字符结构图与数据流说明，展示全局矩阵、读写路径、SID 布局、SID 表、反压、仲裁、FIFO 和 default slave 时序。
+
+---
+
 本文是学习辅助材料；完整契约和实现细节分别见架构、微架构文档。
 
 ## 1. 全局结构
