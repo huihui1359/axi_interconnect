@@ -17,9 +17,7 @@ class axi_stage3_scenario_sequence extends uvm_sequence;
   typedef axi_s_stage3_reactive_seq #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
   ) reactive_t;
-  typedef axi_switch_ref_model #(
-    AXI_ADDR_WIDTH, AXI_M_ID_WIDTH, AXI_S_ID_WIDTH
-  ) model_t;
+  typedef axi_switch_ref_model model_t;
   typedef bit [AXI_M_ID_WIDTH-1:0] mid_t;
   typedef bit [AXI_S_ID_WIDTH-1:0] sid_t;
 

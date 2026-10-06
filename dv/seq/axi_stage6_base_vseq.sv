@@ -3,14 +3,14 @@
 
 class axi_stage6_base_vseq extends uvm_sequence;
 
-  axi_switch_ref_model #() map;
+  axi_switch_ref_model map;
 
   `uvm_object_utils(axi_stage6_base_vseq)
-  `uvm_declare_p_sequencer(axi_virtual_sequencer #())
+  `uvm_declare_p_sequencer(axi_virtual_sequencer)
 
   function new(string name = "axi_stage6_base_vseq");
     super.new(name);
-    map = axi_switch_ref_model #()::type_id::create("map");
+    map = axi_switch_ref_model::type_id::create("map");
   endfunction
 
   virtual function bit [AXI_ADDR_WIDTH-1:0] route_address(

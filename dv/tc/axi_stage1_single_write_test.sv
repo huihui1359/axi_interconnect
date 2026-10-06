@@ -42,9 +42,10 @@ task axi_stage1_single_write_test::run_phase(uvm_phase phase);
     write_seq.start(env.m_agents[0].sequencer);
   join
 
-  wait ((env.stage1_checker.aw_match_count == 1) &&
-        (env.stage1_checker.w_match_count  == 1) &&
-        (env.stage1_checker.b_match_count  == 1));
+  while ((env.stage1_checker.aw_match_count != 1) ||
+         (env.stage1_checker.w_match_count  != 1) ||
+         (env.stage1_checker.b_match_count  != 1))
+    @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
   finish_test("axi_stage1_single_write_test");
   phase.drop_objection(this);
 endtask

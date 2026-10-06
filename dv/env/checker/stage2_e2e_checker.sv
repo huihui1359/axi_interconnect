@@ -1,59 +1,33 @@
 `ifndef STAGE2_E2E_CHECKER_SV
 `define STAGE2_E2E_CHECKER_SV
 
-class stage2_e2e_checker #(
-  int unsigned ADDR_WIDTH = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH = AXI_M_ID_WIDTH,
-  int unsigned S_ID_WIDTH = AXI_S_ID_WIDTH,
-  int unsigned LEN_WIDTH  = AXI_LEN_WIDTH
-) extends uvm_component;
+class stage2_e2e_checker extends uvm_component;
 
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) m_event_t;
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) s_event_t;
-  typedef axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) m_req_t;
-  typedef axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) s_req_t;
-  typedef axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) m_rsp_t;
-  typedef axi_rsp_item #(DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) s_rsp_t;
-  typedef logic [S_ID_WIDTH-1:0] sid_t;
+  typedef axi_m_event_t m_event_t;
+  typedef axi_s_event_t s_event_t;
+  typedef axi_m_req_t m_req_t;
+  typedef axi_s_req_t s_req_t;
+  typedef axi_m_rsp_t m_rsp_t;
+  typedef axi_s_rsp_t s_rsp_t;
+  typedef axi_sid_t sid_t;
 
   uvm_analysis_imp_upstream_channel #(m_event_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) upstream_channel_export;
   uvm_analysis_imp_downstream_channel #(s_event_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) downstream_channel_export;
   uvm_analysis_imp_upstream_req #(m_req_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) upstream_req_export;
   uvm_analysis_imp_downstream_req #(s_req_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) downstream_req_export;
   uvm_analysis_imp_upstream_rsp #(m_rsp_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) upstream_rsp_export;
   uvm_analysis_imp_downstream_rsp #(s_rsp_t,
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage2_e2e_checker
   ) downstream_rsp_export;
 
   m_event_t upstream_aw_q[$];
@@ -79,10 +53,10 @@ class stage2_e2e_checker #(
   bit write_item_context;
   bit read_event_context;
   bit read_item_context;
-  logic [M_ID_WIDTH-1:0] write_original_id;
-  logic [M_ID_WIDTH-1:0] read_original_id;
-  logic [S_ID_WIDTH-1:0] write_expanded_id;
-  logic [S_ID_WIDTH-1:0] read_expanded_id;
+  axi_mid_t write_original_id;
+  axi_mid_t read_original_id;
+  axi_sid_t write_expanded_id;
+  axi_sid_t read_expanded_id;
 
   bit check_expected_counts;
   int unsigned expected_write_count;
@@ -101,11 +75,7 @@ class stage2_e2e_checker #(
   int unsigned mismatch_count;
   bit enabled;
 
-  `uvm_component_param_utils(
-    stage2_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
-  )
+  `uvm_component_utils(stage2_e2e_checker)
 
   extern function new(string name = "stage2_e2e_checker",
                       uvm_component parent = null);
@@ -116,7 +86,7 @@ class stage2_e2e_checker #(
   extern virtual function void write_downstream_req(s_req_t item);
   extern virtual function void write_upstream_rsp(m_rsp_t item);
   extern virtual function void write_downstream_rsp(s_rsp_t item);
-  extern function sid_t expand_id(logic [M_ID_WIDTH-1:0] original_id);
+  extern function sid_t expand_id(axi_mid_t original_id);
   extern function void set_expected_counts(int unsigned write_count,
                                            int unsigned read_count);
   extern function void compare_available();
@@ -277,7 +247,7 @@ function void stage2_e2e_checker::write_downstream_rsp(s_rsp_t item);
 endfunction
 
 function stage2_e2e_checker::sid_t stage2_e2e_checker::expand_id(
-  logic [M_ID_WIDTH-1:0] original_id
+  axi_mid_t original_id
 );
   return sid_t'({2'b01, 2'b01, original_id});
 endfunction

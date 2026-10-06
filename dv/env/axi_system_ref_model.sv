@@ -1,43 +1,22 @@
 `ifndef AXI_SYSTEM_REF_MODEL_SV
 `define AXI_SYSTEM_REF_MODEL_SV
 
-class axi_system_ref_model #(
-  int unsigned ADDR_WIDTH  = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH  = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH  = AXI_M_ID_WIDTH,
-  int unsigned S_ID_WIDTH  = AXI_S_ID_WIDTH,
-  int unsigned LEN_WIDTH   = AXI_LEN_WIDTH,
-  int unsigned NUM_MASTERS = AXI_ENV_NUM_MASTERS,
-  int unsigned NUM_SLAVES  = AXI_ENV_NUM_SLAVES
-) extends uvm_component;
+class axi_system_ref_model extends uvm_component;
 
-  localparam int unsigned S_ID_COUNT = 1 << S_ID_WIDTH;
+  localparam int unsigned S_ID_COUNT = 1 << AXI_S_ID_WIDTH;
 
-  uvm_tlm_analysis_fifo #(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH)
-  ) m_req_fifo[NUM_MASTERS];
-  uvm_tlm_analysis_fifo #(
-    axi_rsp_item #(DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH)
-  ) s_rsp_fifo[NUM_SLAVES];
-  uvm_analysis_port #(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH)
-  ) s_req_ap[NUM_SLAVES];
-  uvm_analysis_port #(
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH)
-  ) m_rsp_ap[NUM_MASTERS];
+  uvm_tlm_analysis_fifo #(axi_m_req_t) m_req_fifo[AXI_NUM_MASTERS];
+  uvm_tlm_analysis_fifo #(axi_s_rsp_t) s_rsp_fifo[AXI_NUM_SLAVES];
+  uvm_analysis_port #(axi_s_req_t) s_req_ap[AXI_NUM_SLAVES];
+  uvm_analysis_port #(axi_m_rsp_t) m_rsp_ap[AXI_NUM_MASTERS];
 
-  axi_switch_ref_model #(ADDR_WIDTH, M_ID_WIDTH, S_ID_WIDTH) map;
+  axi_switch_ref_model map;
   bit enabled;
   int unsigned error_count;
-  int unsigned pending_write_by_sid[NUM_SLAVES][S_ID_COUNT];
-  int unsigned pending_read_by_sid[NUM_SLAVES][S_ID_COUNT];
+  int unsigned pending_write_by_sid[AXI_NUM_SLAVES][S_ID_COUNT];
+  int unsigned pending_read_by_sid[AXI_NUM_SLAVES][S_ID_COUNT];
 
-  `uvm_component_param_utils(
-    axi_system_ref_model #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH,
-      LEN_WIDTH, NUM_MASTERS, NUM_SLAVES
-    )
-  )
+  `uvm_component_utils(axi_system_ref_model)
 
   extern function new(string name = "axi_system_ref_model",
                       uvm_component parent = null);
@@ -46,17 +25,13 @@ class axi_system_ref_model #(
   extern task process_master_requests(int unsigned master_index);
   extern task process_slave_responses(int unsigned slave_index);
   extern function int signed route_to_index(axi_route_e route);
-  function axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) transform_request(
+  function axi_s_req_t transform_request(
     int unsigned master_index,
     axi_route_e route,
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) req
+    axi_m_req_t req
   );
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) result;
-    result = axi_req_item #(
-      ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )::type_id::create("expected_slave_req");
+    axi_s_req_t result;
+    result = axi_s_req_t::type_id::create("expected_slave_req");
     result.dir = req.dir;
     result.id = map.encode_sid(master_index, route, req.id);
     result.addr = req.addr;
@@ -74,15 +49,9 @@ class axi_system_ref_model #(
     return result;
   endfunction
 
-  function axi_rsp_item #(
-    DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) transform_response(
-    axi_rsp_item #(DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) rsp
-  );
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) result;
-    result = axi_rsp_item #(
-      DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-    )::type_id::create("expected_master_rsp");
+  function axi_m_rsp_t transform_response(axi_s_rsp_t rsp);
+    axi_m_rsp_t result;
+    result = axi_m_rsp_t::type_id::create("expected_master_rsp");
     result.dir = rsp.dir;
     result.id = map.restore_id(rsp.id);
     result.len = rsp.len;
@@ -113,9 +82,7 @@ endfunction
 
 function void axi_system_ref_model::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  map = axi_switch_ref_model #(
-    ADDR_WIDTH, M_ID_WIDTH, S_ID_WIDTH
-  )::type_id::create("map");
+  map = axi_switch_ref_model::type_id::create("map");
   foreach (m_req_fifo[index]) begin
     m_req_fifo[index] = new($sformatf("m_req_fifo_%0d", index), this);
     m_rsp_ap[index] = new($sformatf("m_rsp_ap_%0d", index), this);
@@ -129,11 +96,11 @@ endfunction
 task axi_system_ref_model::run_phase(uvm_phase phase);
   if (!enabled)
     return;
-  for (int unsigned index = 0; index < NUM_MASTERS; index++) begin
+  for (int unsigned index = 0; index < AXI_NUM_MASTERS; index++) begin
     automatic int unsigned master_index = index;
     fork process_master_requests(master_index); join_none
   end
-  for (int unsigned index = 0; index < NUM_SLAVES; index++) begin
+  for (int unsigned index = 0; index < AXI_NUM_SLAVES; index++) begin
     automatic int unsigned slave_index = index;
     fork process_slave_responses(slave_index); join_none
   end
@@ -143,8 +110,8 @@ endtask
 task axi_system_ref_model::process_master_requests(
   int unsigned master_index
 );
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) req;
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) expected_req;
+  axi_m_req_t req;
+  axi_s_req_t expected_req;
   axi_route_e route;
   int signed slave_index;
 
@@ -179,22 +146,23 @@ endtask
 task axi_system_ref_model::process_slave_responses(
   int unsigned slave_index
 );
-  axi_rsp_item #(DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) rsp;
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) expected_rsp;
+  axi_s_rsp_t rsp;
+  axi_m_rsp_t expected_rsp;
   int signed master_index;
   axi_route_e encoded_route;
 
   forever begin
     s_rsp_fifo[slave_index].get(rsp);
     master_index = map.decode_master(rsp.id);
-    if ((master_index < 0) || (master_index >= int'(NUM_MASTERS))) begin
+    if ((master_index < 0) ||
+        (master_index >= int'(AXI_NUM_MASTERS))) begin
       error_count++;
       `uvm_error("AXI_SYS_REF_ILLEGAL_MASTER", $sformatf(
         "S%0d response SID 0x%0h has illegal source-master tag",
         slave_index, rsp.id))
       continue;
     end
-    case (rsp.id[S_ID_WIDTH-1 -: 2])
+    case (rsp.id[AXI_S_ID_WIDTH-1 -: 2])
       2'b01: encoded_route = AXI_ROUTE_S0;
       2'b10: encoded_route = AXI_ROUTE_S1;
       2'b11: encoded_route = AXI_ROUTE_S2;

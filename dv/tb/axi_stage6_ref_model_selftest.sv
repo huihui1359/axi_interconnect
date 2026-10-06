@@ -5,12 +5,24 @@ module axi_stage6_ref_model_selftest;
   import axi_types_pkg::*;
   import axi_env_pkg::*;
 
+  // Required only for Questa 10.6c package-time virtual-interface resolution.
+  logic dummy_clk = 1'b0;
+  logic dummy_rst_n = 1'b0;
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH(AXI_M_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+  ) dummy_m_if(.ACLK(dummy_clk), .ARESETn(dummy_rst_n));
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH(AXI_S_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+  ) dummy_s_if(.ACLK(dummy_clk), .ARESETn(dummy_rst_n));
+
   initial begin
-    axi_switch_ref_model #() model;
+    axi_switch_ref_model model;
     axi_route_e route;
     bit [3:0] mid;
     bit [7:0] sid;
-    model = axi_switch_ref_model #()::type_id::create("stage6_unit_model");
+    model = axi_switch_ref_model::type_id::create("stage6_unit_model");
 
     for (int unsigned master = 0; master < 3; master++) begin
       for (int unsigned slave = 0; slave < 3; slave++) begin

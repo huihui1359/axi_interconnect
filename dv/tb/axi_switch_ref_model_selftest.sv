@@ -6,9 +6,20 @@ module axi_switch_ref_model_selftest;
   import axi_types_pkg::*;
   import axi_env_pkg::*;
 
-  typedef axi_switch_ref_model #(
-    AXI_ADDR_WIDTH, AXI_M_ID_WIDTH, AXI_S_ID_WIDTH
-  ) model_t;
+  typedef axi_switch_ref_model model_t;
+
+  // Questa 10.6c resolves concrete virtual-interface typedefs while loading
+  // axi_env_pkg, even though this unit test does not construct axi_env.
+  logic dummy_clk = 1'b0;
+  logic dummy_rst_n = 1'b0;
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH(AXI_M_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+  ) dummy_m_if(.ACLK(dummy_clk), .ARESETn(dummy_rst_n));
+  axi_if #(
+    .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+    .ID_WIDTH(AXI_S_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+  ) dummy_s_if(.ACLK(dummy_clk), .ARESETn(dummy_rst_n));
 
   initial begin
     model_t model;

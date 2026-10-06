@@ -1,20 +1,10 @@
 `ifndef AXI_SYSTEM_COVERAGE_SV
 `define AXI_SYSTEM_COVERAGE_SV
 
-class axi_system_coverage #(
-  int unsigned ADDR_WIDTH  = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH  = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH  = AXI_M_ID_WIDTH,
-  int unsigned LEN_WIDTH   = AXI_LEN_WIDTH,
-  int unsigned NUM_MASTERS = AXI_ENV_NUM_MASTERS
-) extends uvm_component;
+class axi_system_coverage extends uvm_component;
 
-  uvm_tlm_analysis_fifo #(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH)
-  ) m_req_fifo[NUM_MASTERS];
-  axi_switch_ref_model #(
-    ADDR_WIDTH, M_ID_WIDTH, AXI_S_ID_WIDTH
-  ) map;
+  uvm_tlm_analysis_fifo #(axi_m_req_t) m_req_fifo[AXI_NUM_MASTERS];
+  axi_switch_ref_model map;
   bit enabled;
   int unsigned sampled_master;
   int unsigned sampled_slave;
@@ -28,11 +18,7 @@ class axi_system_coverage #(
     master_x_slave_x_dir: cross cp_master, cp_slave, cp_dir;
   endgroup
 
-  `uvm_component_param_utils(
-    axi_system_coverage #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH, NUM_MASTERS
-    )
-  )
+  `uvm_component_utils(axi_system_coverage)
 
   extern function new(string name = "axi_system_coverage",
                       uvm_component parent = null);
@@ -53,9 +39,7 @@ endfunction
 
 function void axi_system_coverage::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  map = axi_switch_ref_model #(
-    ADDR_WIDTH, M_ID_WIDTH, AXI_S_ID_WIDTH
-  )::type_id::create("map");
+  map = axi_switch_ref_model::type_id::create("map");
   foreach (m_req_fifo[index])
     m_req_fifo[index] = new($sformatf("m_req_fifo_%0d", index), this);
 endfunction
@@ -63,7 +47,7 @@ endfunction
 task axi_system_coverage::run_phase(uvm_phase phase);
   if (!enabled)
     return;
-  for (int unsigned index = 0; index < NUM_MASTERS; index++) begin
+  for (int unsigned index = 0; index < AXI_NUM_MASTERS; index++) begin
     automatic int unsigned port_index = index;
     fork collect_master_requests(port_index); join_none
   end
@@ -73,7 +57,7 @@ endtask
 task axi_system_coverage::collect_master_requests(
   int unsigned master_index
 );
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) req;
+  axi_m_req_t req;
   axi_route_e route;
   forever begin
     m_req_fifo[master_index].get(req);

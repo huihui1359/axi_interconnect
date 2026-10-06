@@ -41,8 +41,9 @@ task axi_stage1_single_read_test::run_phase(uvm_phase phase);
     read_seq.start(env.m_agents[0].sequencer);
   join
 
-  wait ((env.stage1_checker.ar_match_count == 1) &&
-        (env.stage1_checker.r_match_count  == 1));
+  while ((env.stage1_checker.ar_match_count != 1) ||
+         (env.stage1_checker.r_match_count  != 1))
+    @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
   finish_test("axi_stage1_single_read_test");
   phase.drop_objection(this);
 endtask

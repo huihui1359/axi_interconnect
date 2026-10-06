@@ -1,31 +1,17 @@
 `ifndef STAGE1_E2E_CHECKER_SV
 `define STAGE1_E2E_CHECKER_SV
 
-class stage1_e2e_checker #(
-  int unsigned ADDR_WIDTH = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH = AXI_M_ID_WIDTH,
-  int unsigned S_ID_WIDTH = AXI_S_ID_WIDTH,
-  int unsigned LEN_WIDTH  = AXI_LEN_WIDTH
-) extends uvm_component;
+class stage1_e2e_checker extends uvm_component;
 
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) m_event_t;
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) s_event_t;
-  typedef logic [S_ID_WIDTH-1:0] sid_t;
+  typedef axi_m_event_t m_event_t;
+  typedef axi_s_event_t s_event_t;
+  typedef axi_sid_t sid_t;
 
   uvm_analysis_imp_upstream #(m_event_t,
-    stage1_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage1_e2e_checker
   ) upstream_export;
   uvm_analysis_imp_downstream #(s_event_t,
-    stage1_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage1_e2e_checker
   ) downstream_export;
 
   m_event_t upstream_aw_q[$];
@@ -39,10 +25,10 @@ class stage1_e2e_checker #(
   s_event_t downstream_ar_q[$];
   s_event_t downstream_r_q[$];
 
-  logic [M_ID_WIDTH-1:0] aw_id_q[$];
-  logic [M_ID_WIDTH-1:0] w_id_q[$];
-  logic [M_ID_WIDTH-1:0] write_id_q[$];
-  logic [M_ID_WIDTH-1:0] read_id_q[$];
+  axi_mid_t aw_id_q[$];
+  axi_mid_t w_id_q[$];
+  axi_mid_t write_id_q[$];
+  axi_mid_t read_id_q[$];
 
   int unsigned aw_match_count;
   int unsigned w_match_count;
@@ -52,20 +38,14 @@ class stage1_e2e_checker #(
   int unsigned mismatch_count;
   bit enabled;
 
-  `uvm_component_param_utils(
-    stage1_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
-  )
+  `uvm_component_utils(stage1_e2e_checker)
 
   extern function new(string name = "stage1_e2e_checker",
                       uvm_component parent = null);
   extern virtual function void build_phase(uvm_phase phase);
   extern virtual function void write_upstream(m_event_t event_in);
   extern virtual function void write_downstream(s_event_t event_in);
-  extern function logic [S_ID_WIDTH-1:0] expand_id(
-    logic [M_ID_WIDTH-1:0] original_id
-  );
+  extern function axi_sid_t expand_id(axi_mid_t original_id);
   extern function void compare_available();
   extern function void compare_aw();
   extern function void compare_w();
@@ -151,7 +131,7 @@ function void stage1_e2e_checker::write_downstream(s_event_t event_in);
 endfunction
 
 function stage1_e2e_checker::sid_t stage1_e2e_checker::expand_id(
-  logic [M_ID_WIDTH-1:0] original_id
+  axi_mid_t original_id
 );
   return {2'b01, 2'b01, original_id};
 endfunction
@@ -249,8 +229,8 @@ function void stage1_e2e_checker::compare_ar();
 endfunction
 
 function void stage1_e2e_checker::build_write_context();
-  logic [M_ID_WIDTH-1:0] aw_id;
-  logic [M_ID_WIDTH-1:0] w_id;
+  axi_mid_t aw_id;
+  axi_mid_t w_id;
   while ((aw_id_q.size() != 0) && (w_id_q.size() != 0)) begin
     aw_id = aw_id_q.pop_front();
     w_id  = w_id_q.pop_front();
@@ -265,7 +245,7 @@ endfunction
 function void stage1_e2e_checker::compare_b();
   m_event_t upstream;
   s_event_t downstream;
-  logic [M_ID_WIDTH-1:0] original_id;
+  axi_mid_t original_id;
   while ((downstream_b_q.size() != 0) &&
          (upstream_b_q.size() != 0) &&
          (write_id_q.size() != 0)) begin
@@ -293,7 +273,7 @@ endfunction
 function void stage1_e2e_checker::compare_r();
   m_event_t upstream;
   s_event_t downstream;
-  logic [M_ID_WIDTH-1:0] original_id;
+  axi_mid_t original_id;
   while ((downstream_r_q.size() != 0) &&
          (upstream_r_q.size() != 0) &&
          (read_id_q.size() != 0)) begin

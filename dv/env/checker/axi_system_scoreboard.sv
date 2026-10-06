@@ -1,56 +1,29 @@
 `ifndef AXI_SYSTEM_SCOREBOARD_SV
 `define AXI_SYSTEM_SCOREBOARD_SV
 
-class axi_system_scoreboard #(
-  int unsigned ADDR_WIDTH  = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH  = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH  = AXI_M_ID_WIDTH,
-  int unsigned S_ID_WIDTH  = AXI_S_ID_WIDTH,
-  int unsigned LEN_WIDTH   = AXI_LEN_WIDTH,
-  int unsigned NUM_MASTERS = AXI_ENV_NUM_MASTERS,
-  int unsigned NUM_SLAVES  = AXI_ENV_NUM_SLAVES
-) extends uvm_component;
+class axi_system_scoreboard extends uvm_component;
 
-  localparam int unsigned M_ID_COUNT = 1 << M_ID_WIDTH;
-  localparam int unsigned S_ID_COUNT = 1 << S_ID_WIDTH;
+  localparam int unsigned M_ID_COUNT = 1 << AXI_M_ID_WIDTH;
+  localparam int unsigned S_ID_COUNT = 1 << AXI_S_ID_WIDTH;
+  typedef axi_s_req_t s_req_t;
+  typedef axi_m_rsp_t m_rsp_t;
 
-  uvm_tlm_analysis_fifo #(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH)
-  ) exp_s_req_fifo[NUM_SLAVES];
-  uvm_tlm_analysis_fifo #(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH)
-  ) act_s_req_fifo[NUM_SLAVES];
-  uvm_tlm_analysis_fifo #(
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH)
-  ) exp_m_rsp_fifo[NUM_MASTERS];
-  uvm_tlm_analysis_fifo #(
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH)
-  ) act_m_rsp_fifo[NUM_MASTERS];
+  uvm_tlm_analysis_fifo #(s_req_t) exp_s_req_fifo[AXI_NUM_SLAVES];
+  uvm_tlm_analysis_fifo #(s_req_t) act_s_req_fifo[AXI_NUM_SLAVES];
+  uvm_tlm_analysis_fifo #(m_rsp_t) exp_m_rsp_fifo[AXI_NUM_MASTERS];
+  uvm_tlm_analysis_fifo #(m_rsp_t) act_m_rsp_fifo[AXI_NUM_MASTERS];
 
-  axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) exp_s_req_by_id[NUM_SLAVES][2][S_ID_COUNT][$];
-  axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) act_s_req_by_id[NUM_SLAVES][2][S_ID_COUNT][$];
-  axi_rsp_item #(
-    DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) exp_m_rsp_by_id[NUM_MASTERS][2][M_ID_COUNT][$];
-  axi_rsp_item #(
-    DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) act_m_rsp_by_id[NUM_MASTERS][2][M_ID_COUNT][$];
+  s_req_t exp_s_req_by_id[AXI_NUM_SLAVES][2][S_ID_COUNT][$];
+  s_req_t act_s_req_by_id[AXI_NUM_SLAVES][2][S_ID_COUNT][$];
+  m_rsp_t exp_m_rsp_by_id[AXI_NUM_MASTERS][2][M_ID_COUNT][$];
+  m_rsp_t act_m_rsp_by_id[AXI_NUM_MASTERS][2][M_ID_COUNT][$];
 
   bit enabled;
   int unsigned mismatch_count;
   int unsigned request_match_count;
   int unsigned response_match_count;
 
-  `uvm_component_param_utils(
-    axi_system_scoreboard #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH,
-      LEN_WIDTH, NUM_MASTERS, NUM_SLAVES
-    )
-  )
+  `uvm_component_utils(axi_system_scoreboard)
 
   extern function new(string name = "axi_system_scoreboard",
                       uvm_component parent = null);
@@ -67,12 +40,12 @@ class axi_system_scoreboard #(
                                    axi_dir_e dir,
                                    int unsigned id);
   extern function bit request_equal(
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) expected,
-    axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) actual
+    s_req_t expected,
+    s_req_t actual
   );
   extern function bit response_equal(
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) expected,
-    axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) actual
+    m_rsp_t expected,
+    m_rsp_t actual
   );
   extern function int unsigned pending_count();
   extern virtual function void check_phase(uvm_phase phase);
@@ -105,14 +78,14 @@ endfunction
 task axi_system_scoreboard::run_phase(uvm_phase phase);
   if (!enabled)
     return;
-  for (int unsigned index = 0; index < NUM_SLAVES; index++) begin
+  for (int unsigned index = 0; index < AXI_NUM_SLAVES; index++) begin
     automatic int unsigned port_index = index;
     fork
       collect_exp_s_req(port_index);
       collect_act_s_req(port_index);
     join_none
   end
-  for (int unsigned index = 0; index < NUM_MASTERS; index++) begin
+  for (int unsigned index = 0; index < AXI_NUM_MASTERS; index++) begin
     automatic int unsigned port_index = index;
     fork
       collect_exp_m_rsp(port_index);
@@ -123,8 +96,8 @@ task axi_system_scoreboard::run_phase(uvm_phase phase);
 endtask
 
 task axi_system_scoreboard::collect_exp_s_req(int unsigned port_index);
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) item;
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) snapshot;
+  s_req_t item;
+  s_req_t snapshot;
   forever begin
     exp_s_req_fifo[port_index].get(item);
     if ((item == null) || !$cast(snapshot, item.clone())) begin
@@ -139,8 +112,8 @@ task axi_system_scoreboard::collect_exp_s_req(int unsigned port_index);
 endtask
 
 task axi_system_scoreboard::collect_act_s_req(int unsigned port_index);
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) item;
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) snapshot;
+  s_req_t item;
+  s_req_t snapshot;
   forever begin
     act_s_req_fifo[port_index].get(item);
     if ((item == null) || !$cast(snapshot, item.clone())) begin
@@ -155,8 +128,8 @@ task axi_system_scoreboard::collect_act_s_req(int unsigned port_index);
 endtask
 
 task axi_system_scoreboard::collect_exp_m_rsp(int unsigned port_index);
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) item;
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) snapshot;
+  m_rsp_t item;
+  m_rsp_t snapshot;
   forever begin
     exp_m_rsp_fifo[port_index].get(item);
     if ((item == null) || !$cast(snapshot, item.clone())) begin
@@ -171,8 +144,8 @@ task axi_system_scoreboard::collect_exp_m_rsp(int unsigned port_index);
 endtask
 
 task axi_system_scoreboard::collect_act_m_rsp(int unsigned port_index);
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) item;
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) snapshot;
+  m_rsp_t item;
+  m_rsp_t snapshot;
   forever begin
     act_m_rsp_fifo[port_index].get(item);
     if ((item == null) || !$cast(snapshot, item.clone())) begin
@@ -191,8 +164,8 @@ function void axi_system_scoreboard::match_s_req(
   axi_dir_e dir,
   int unsigned id
 );
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) expected;
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) actual;
+  s_req_t expected;
+  s_req_t actual;
   while ((exp_s_req_by_id[port_index][int'(dir)][id].size() != 0) &&
          (act_s_req_by_id[port_index][int'(dir)][id].size() != 0)) begin
     expected = exp_s_req_by_id[port_index][int'(dir)][id].pop_front();
@@ -212,8 +185,8 @@ function void axi_system_scoreboard::match_m_rsp(
   axi_dir_e dir,
   int unsigned id
 );
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) expected;
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) actual;
+  m_rsp_t expected;
+  m_rsp_t actual;
   while ((exp_m_rsp_by_id[port_index][int'(dir)][id].size() != 0) &&
          (act_m_rsp_by_id[port_index][int'(dir)][id].size() != 0)) begin
     expected = exp_m_rsp_by_id[port_index][int'(dir)][id].pop_front();
@@ -229,8 +202,8 @@ function void axi_system_scoreboard::match_m_rsp(
 endfunction
 
 function bit axi_system_scoreboard::request_equal(
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) expected,
-  axi_req_item #(ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) actual
+  s_req_t expected,
+  s_req_t actual
 );
   if ((expected.dir != actual.dir) || (expected.id !== actual.id) ||
       (expected.addr !== actual.addr) || (expected.len !== actual.len) ||
@@ -246,8 +219,8 @@ function bit axi_system_scoreboard::request_equal(
 endfunction
 
 function bit axi_system_scoreboard::response_equal(
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) expected,
-  axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) actual
+  m_rsp_t expected,
+  m_rsp_t actual
 );
   if ((expected.dir != actual.dir) || (expected.id !== actual.id) ||
       (expected.len !== actual.len) ||

@@ -1,65 +1,37 @@
 `ifndef STAGE3_E2E_CHECKER_SV
 `define STAGE3_E2E_CHECKER_SV
 
-class stage3_e2e_checker #(
-  int unsigned ADDR_WIDTH = AXI_ADDR_WIDTH,
-  int unsigned DATA_WIDTH = AXI_DATA_WIDTH,
-  int unsigned M_ID_WIDTH = AXI_M_ID_WIDTH,
-  int unsigned S_ID_WIDTH = AXI_S_ID_WIDTH,
-  int unsigned LEN_WIDTH  = AXI_LEN_WIDTH
-) extends uvm_component;
+class stage3_e2e_checker extends uvm_component;
 
-  localparam int unsigned M_ID_COUNT = 1 << M_ID_WIDTH;
+  localparam int unsigned M_ID_COUNT = 1 << AXI_M_ID_WIDTH;
 
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) m_event_t;
-  typedef axi_channel_event #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) s_event_t;
-  typedef axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH
-  ) m_req_t;
-  typedef axi_req_item #(
-    ADDR_WIDTH, DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH
-  ) s_req_t;
-  typedef axi_rsp_item #(DATA_WIDTH, M_ID_WIDTH, LEN_WIDTH) m_rsp_t;
-  typedef axi_rsp_item #(DATA_WIDTH, S_ID_WIDTH, LEN_WIDTH) s_rsp_t;
-  typedef axi_switch_ref_model #(
-    ADDR_WIDTH, M_ID_WIDTH, S_ID_WIDTH
-  ) model_t;
-  typedef bit [M_ID_WIDTH-1:0] mid_t;
-  typedef bit [S_ID_WIDTH-1:0] sid_t;
+  typedef axi_m_event_t m_event_t;
+  typedef axi_s_event_t s_event_t;
+  typedef axi_m_req_t m_req_t;
+  typedef axi_s_req_t s_req_t;
+  typedef axi_m_rsp_t m_rsp_t;
+  typedef axi_s_rsp_t s_rsp_t;
+  typedef axi_switch_ref_model model_t;
+  typedef axi_mid_t mid_t;
+  typedef axi_sid_t sid_t;
 
   uvm_analysis_imp_upstream_channel #(m_event_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) upstream_channel_export;
   uvm_analysis_imp_downstream_channel #(s_event_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) downstream_channel_export;
   uvm_analysis_imp_upstream_req #(m_req_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) upstream_req_export;
   uvm_analysis_imp_downstream_req #(s_req_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) downstream_req_export;
   uvm_analysis_imp_upstream_rsp #(m_rsp_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) upstream_rsp_export;
   uvm_analysis_imp_downstream_rsp #(s_rsp_t,
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
+    stage3_e2e_checker
   ) downstream_rsp_export;
 
   model_t switch_model;
@@ -116,11 +88,7 @@ class stage3_e2e_checker #(
   int unsigned expected_write_count;
   int unsigned expected_read_count;
 
-  `uvm_component_param_utils(
-    stage3_e2e_checker #(
-      ADDR_WIDTH, DATA_WIDTH, M_ID_WIDTH, S_ID_WIDTH, LEN_WIDTH
-    )
-  )
+  `uvm_component_utils(stage3_e2e_checker)
 
   extern function new(string name = "stage3_e2e_checker",
                       uvm_component parent = null);
@@ -133,7 +101,7 @@ class stage3_e2e_checker #(
   extern virtual function void write_downstream_rsp(s_rsp_t item);
   extern function void set_expected_counts(int unsigned write_count,
                                            int unsigned read_count);
-  extern function sid_t expected_sid(mid_t id, bit [ADDR_WIDTH-1:0] addr);
+  extern function sid_t expected_sid(mid_t id, axi_addr_t addr);
   extern function int unsigned restore_index(sid_t sid);
   extern function int unsigned write_outstanding();
   extern function int unsigned read_outstanding();
@@ -183,7 +151,7 @@ endfunction
 
 function stage3_e2e_checker::sid_t stage3_e2e_checker::expected_sid(
   mid_t id,
-  bit [ADDR_WIDTH-1:0] addr
+  axi_addr_t addr
 );
   return switch_model.encode_sid(0, switch_model.decode_address(addr), id);
 endfunction

@@ -1,5 +1,17 @@
 # AXI3 Interconnect UVM验证环境Stage 6执行工单
 
+**Author**: Sun Menghui, Codex, 5.6 Sol
+**Created**: 2026-09-27 23:35
+**Current Version**: v1.3
+
+**Version Changelog**:
+- **v1.3** (2026-10-07 00:22): 记录AXI验证环境宽度与端口数量参数集中化方案、类型别名、factory简化方式及迁移结果。
+- **v1.2** (2026-10-05 01:45): 调整Default Slave验证范围并补充Stage 6验证环境与回归框架。
+- **v1.1** (2026-09-29 09:15): 补充Stage 6实现、调试和缺陷跟踪记录。
+- **v1.0** (2026-09-27 23:35): 创建Stage 6执行工单，定义目标、范围、环境结构、测试与验收要求。
+
+---
+
 > 状态：待实施
 >
 > 前置条件：`dv/doc/stage3.md`已经实施并通过冻结审核，当前M0到S0环境支持burst、delay/gap、五通道backpressure、读写分别最多4笔outstanding、相同ID保序、不同ID响应乱序、4-bit/8-bit ID映射、完整Monitor重建、Outstanding Tracker、Stage 3 Checker和协议断言。
@@ -1447,6 +1459,83 @@ tb
 ~~~
 
 module/bind文件不得include进UVM package。
+
+### 25.4 编译期规格和UVM类型管理
+
+Stage 6环境采用“单一构建规格源、底层VIP参数化、项目级组件具体化”的管理方式。
+位宽会参与packed类型、interface、virtual interface和TLM端口的类型构造，因此属于编译期配置，
+不得通过`uvm_config_db`在运行期修改。
+
+`dv/common/axi_types_pkg.sv`是当前构建的唯一规格源：
+
+~~~systemverilog
+localparam int unsigned AXI_ADDR_WIDTH  = 32;
+localparam int unsigned AXI_DATA_WIDTH  = 32;
+localparam int unsigned AXI_M_ID_WIDTH  = 4;
+localparam int unsigned AXI_CID_WIDTH   = 4;
+localparam int unsigned AXI_S_ID_WIDTH  =
+    AXI_CID_WIDTH + AXI_M_ID_WIDTH;
+localparam int unsigned AXI_LEN_WIDTH   = 4;
+localparam int unsigned AXI_NUM_MASTERS = 3;
+localparam int unsigned AXI_NUM_SLAVES  = 3;
+~~~
+
+约束如下：
+
+- `AXI_S_ID_WIDTH`只能由`AXI_CID_WIDTH + AXI_M_ID_WIDTH`推导，不得独立填写。
+- `AXI_DATA_BYTES`只能由`AXI_DATA_WIDTH / 8`推导。
+- DUT和env共享`AXI_NUM_MASTERS/AXI_NUM_SLAVES`，不得维护两套可独立变化的拓扑参数。
+- 旧的`AXI_DUT_NUM_*`和`AXI_ENV_NUM_*`仅作为源码兼容别名保留，不是配置入口。
+- 当前RTL固定为3×3拓扑、4-bit MID、4-bit CID和4-bit LEN；`tb`在0时刻检查这些约束。
+- `SIZE[2:0]`、`BURST[1:0]`、`RESP[1:0]`及VALID/READY/LAST属于协议固定宽度，不增加参数。
+
+`axi_req_item`、`axi_rsp_item`、`axi_channel_event`、agent、driver、monitor、sequencer、
+agent cfg和outstanding tracker继续保留参数化，以便作为底层VIP复用。`axi_env_pkg`只在一个位置将其
+绑定为本工程的具体类型：
+
+~~~systemverilog
+typedef axi_req_item #(
+  .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+  .ID_WIDTH(AXI_M_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+) axi_m_req_t;
+
+typedef axi_req_item #(
+  .ADDR_WIDTH(AXI_ADDR_WIDTH), .DATA_WIDTH(AXI_DATA_WIDTH),
+  .ID_WIDTH(AXI_S_ID_WIDTH), .LEN_WIDTH(AXI_LEN_WIDTH)
+) axi_s_req_t;
+~~~
+
+同一位置还声明`axi_m_rsp_t/axi_s_rsp_t`、`axi_m_event_t/axi_s_event_t`、
+`axi_m_agent_cfg_t/axi_s_agent_cfg_t`、`axi_m_sequencer_t/axi_s_sequencer_t`、
+`axi_m_agent_t/axi_s_agent_t`和两种tracker类型。新增项目级组件应优先使用这些别名，
+不得再次逐层透传ADDR/DATA/ID/LEN参数列表。
+
+以下interconnect专用组件使用普通、非参数化UVM factory注册：
+
+- `axi_switch_ref_model`
+- `axi_system_ref_model`
+- `axi_system_scoreboard`
+- `axi_channel_forwarding_checker`
+- `axi_system_coverage`
+- `stage1_e2e_checker/stage2_e2e_checker/stage3_e2e_checker`
+- `axi_virtual_sequencer`
+- `axi_env_cfg`
+- `axi_env`
+
+因此项目级创建统一写成：
+
+~~~systemverilog
+env_cfg = axi_env_cfg::type_id::create("env_cfg");
+env     = axi_env::type_id::create("env", this);
+~~~
+
+`axi_env_cfg`只保存active/passive、virtual interface句柄、checker模式和延迟等运行期策略，
+不保存信号位宽。需要验证另一组位宽时，应修改或生成新的`axi_types_pkg.sv`并重新编译，
+而不是在同一仿真镜像中通过factory或config_db切换类型。
+
+Questa 10.6c有两项兼容处理：纯模型selftest顶层需要各放置一个master/slave dummy interface，
+以满足package加载时的具体virtual-interface类型解析；Stage 1测试对checker计数使用时钟轮询，
+避免旧版工具对非参数化类成员直接`wait`时遗漏唤醒。这两项处理均不参与DUT激励或改变检查条件。
 
 # 第四部分：Stage 6验证和验收
 

@@ -40,7 +40,7 @@ function void axi_base_test::build_phase(uvm_phase phase);
     `uvm_fatal("AXI_TEST_CFG", "env_cfg was not provided")
 
   uvm_config_db#(axi_env_cfg)::set(this, "env", "cfg", env_cfg);
-  env = axi_env #()::type_id::create("env", this);
+  env = axi_env::type_id::create("env", this);
 endfunction
 
 function void axi_base_test::configure_ready_fixed(
