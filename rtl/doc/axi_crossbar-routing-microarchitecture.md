@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 记录 wrapper grant/FSM 移除、round-robin内部pending保持、五通道accept提交条件及握手驱动的公平性语义。
 - **v1.0** (2026-10-04 20:10): 初版 crossbar 路由与仲裁微架构，描述 3×3/default 请求平面、四来源响应平面、SID 构造、仲裁锁定与已知风险。
 
 ---
@@ -56,15 +57,15 @@
 
 ## 3. `axi_arbiter_mtos_m3`
 
-AW、AR、W 各有独立 round-robin 选择和 RUN/WAIT 状态。RUN 时使用组合选择；若有 grant 但未 ready，保存 grant 并进入 WAIT；WAIT 直到 `grant & valid & ready`，然后回 RUN。W 不等待 `WLAST`，逐 beat 释放。
+AW、AR、W 各有独立的 handshake-aware round-robin。wrapper生成`grant & VALID & READY`提交条件；round-robin内部用`pending_valid/pending_winner`保持尚未握手的grant，并只在accept时提交`last_winner`。W不等待`WLAST`，逐beat释放。
 
-| 通道 | 状态寄存器 | 保存寄存器 | 请求 |
+| 通道 | 请求 | accept | pending保持位置 |
 |---|---|---|---|
-| AR | `stateAR[1:0]` | `argrant_reg[2:0]` | `ARSELECT & ARVALID` |
-| AW | `stateAW[1:0]` | `awgrant_reg[2:0]` | `AWSELECT & AWVALID` |
-| W | `stateW` | `wgrant_reg[3:0]`（实际 grant 3 位） | `WSELECT & WVALID` |
+| AR | `ARSELECT & ARVALID` | `\|(ARGRANT & ARVALID & ARREADY)` | `u_arbiter_ar`内部 |
+| AW | `AWSELECT & AWVALID` | `\|(AWGRANT & AWVALID & AWREADY)` | `u_arbiter_aw`内部 |
+| W | `WSELECT & WVALID` | `\|(WGRANT & WVALID & WREADY)` | `u_arbiter_w`内部 |
 
-注意：AR/W case 无 default；`wgrant_reg` 比需要多 1 位。无 assertion。
+wrapper不再保存grant，也不再包含仲裁RUN/WAIT状态机。
 
 ## 4. `axi_stom_s3`
 
@@ -78,11 +79,11 @@ B/R 分别比较四个来源 SID 的 `[WIDTH_ID+1:WIDTH_ID]` 与本实例 `M_MID
 
 ## 5. `axi_arbiter_stom_s3`
 
-B、R 各有 RUN/WAIT 状态和保存 grant。逻辑与 M→S 仲裁同构。R 逐 beat 释放而非保持到 `RLAST`，因此可能跨 ID 交织。四路轮询包含 default 来源。
+B、R使用与M→S相同的内部pending保持和accept提交规则。R逐beat释放而非保持到`RLAST`，因此可能跨ID交织。四路轮询包含default来源。
 
 ## 6. 仲裁公平性与锁定语义
 
-`round_robin_*` 根据 `last_winner` 从下一请求者开始扫描，实现循环优先级。它在任意 `rr_vld` 周期记录 `curr_winner`，没有 handshake 输入。外层 WAIT FSM 在反压时锁住 grant，从而保证 payload 稳定。**TOVERIFY：** 在持续请求且 downstream 可接受时，轮询按请求周期前进；可认为有公平意图，但不能从 RTL给出绝对延迟界限。
+`round_robin_*`根据`last_winner`从下一请求者开始扫描，实现循环优先级。无pending时输出组合`curr_winner`；若该winner未握手，则在时钟沿保存到`pending_winner`，直到accept前保持grant和payload来源不变。`last_winner`只在accept时更新为实际grant，因此公平顺序按成功服务次数推进，而不受stall周期数影响。
 
 ## 7. hazard、错误与风险
 

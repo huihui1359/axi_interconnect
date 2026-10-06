@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 将五通道仲裁验证从 wrapper RUN/WAIT FSM 改为 round-robin pending/accept 模型，并更新反压、状态覆盖和压力测试判据。
 - **v1.0** (2026-10-04 20:10): 初版 AXI interconnect 验证计划，定义 F01–F29、定向与约束随机策略、接口/FSM/缓冲验证、负测、stress、performance 和 coverage closure 标准。
 
 ---
@@ -42,7 +43,7 @@
 | F08 | Concurrent targets | 三个目标并行 | Directed + CR | `tp_three_target_parallel`, `tp_concurrency_random` | M0/M1/M2 同拍访问不同目标，混合读写 | 三个目标均可在同一周期观察各自通道握手；三条事务均只出现一次且数据 0 mismatch | `cg_concurrency` |
 | F09 | M→S arbitration | S0/S1/S2/default 的 AW/W/AR 三路轮询 | Directed + CR | `tp_mtos_round_robin`, `tp_mtos_arb_random` | 3 M 同时持续请求同一目标，插入随机 ready stalls | ready持续为 1 时每 3 个 eligible handshake内 M0/M1/M2 各获胜至少 1 次；grant one-hot-or-zero | `cg_mtos_arb` |
 | F10 | S→M arbitration | 每个 M 的 B/R 四路轮询 | Directed + CR | `tp_stom_round_robin`, `tp_stom_arb_random` | S0/S1/S2/default 同时向同一 MID 返回 | ready持续为 1 时每 4 个 eligible handshake内四个来源各获胜至少 1 次；输出 payload来自唯一 grant | `cg_stom_arb` |
-| F11 | Grant lock | RUN/WAIT 反压保持 | Directed + CR | `tp_grant_stall_lock`, `tp_grant_lock_random` | 获 grant 后 ready拉低 1,2,5,16 周期，期间加入新请求 | WAIT 期间 grant及全部 payload逐周期 `$stable`；原请求握手前来源不切换 | `cg_grant_lock` |
+| F11 | Grant lock | round-robin内部pending反压保持 | Directed + CR | `tp_grant_stall_lock`, `tp_grant_lock_random` | 获grant后ready拉低1,2,5,16周期，期间加入新请求 | `pending_valid`期间grant及全部payload逐周期`$stable`；原请求握手前来源不切换 | `cg_grant_lock` |
 | F12 | FIFO buffering | 30 个 `axi_fifo_sync`、深度 4 | Directed + CR | `tp_fifo_boundaries`, `tp_fifo_random_pressure` | 各通道 fill 0/1/3/4、pop/push组合 | 第 4 项后 `wr_rdy=0`；FIFO序列逐位保持；空时 `rd_vld=0`；30 个实例组全部覆盖 | `cg_fifo` |
 | F13 | FIFO edge semantics | 空/满同拍 read+write | Directed + CR | `tp_fifo_empty_full_exchange`, `tp_fifo_edge_random` | empty与full边界同时拉高 wr_vld/rd_rdy | 空态同拍只接受 push且下一周期 `rd_vld=1`；满态同拍只 pop、不接受 push，下一周期 occupancy=3 | `cg_fifo_edges` |
 | F14 | SID tables | AR/AW 各 4 项容量与压紧 | Directed + CR | `tp_sid_table_depth`, `tp_sid_table_random` | 登记 4 个不同 SID、乱序候选、逐项 LAST | 占用数仅 0..4；第 5 个地址被反压；删除 slot 0..3 后剩余项保持相对次序并左移 | `cg_sid_table` |
@@ -160,21 +161,21 @@
 
 ### 6.1 `axi_arbiter_mtos_m3`
 
-对 `stateAR/stateAW/stateW` 分别执行：
+对`u_arbiter_ar/u_arbiter_aw/u_arbiter_w`的`pending_valid`分别执行：
 
 | Initial State | Condition | Expected Next State / Output |
 |---|---|---|
-| RUN | 无request | 保持RUN，grant=0 |
-| RUN | request且READY=1 | 保持RUN，发生1次握手 |
-| RUN | request且READY=0 | 下一拍WAIT，`*grant_reg`保存当前one-hot grant |
-| WAIT | VALID=1且READY=0 | 保持WAIT，grant与payload稳定 |
-| WAIT | `grant&VALID&READY` | 下一拍RUN；AW/W保存grant清0，AR下一次RUN重新选择 |
+| `pending_valid=0` | 无request | grant=0，指针保持 |
+| `pending_valid=0` | request且READY=1 | 同拍握手，下一拍`last_winner`等于实际grant，pending保持0 |
+| `pending_valid=0` | request且READY=0 | 下一拍pending=1，`pending_winner`保存当前one-hot grant |
+| `pending_valid=1` | VALID=1且READY=0 | pending保持1，grant与payload稳定，新request不得抢占 |
+| `pending_valid=1` | `grant&VALID&READY` | 下一拍pending清0，`last_winner`提交为实际grant并开始下一轮 |
 
-每个状态和合法弧覆盖100%。当READY释放并保持1时，WAIT不得超过2个额外观测周期；若request撤销违反valid保持规则，由接口assertion报错，不作为合法FSM弧。
+pending 0/1及其合法转换覆盖100%。当READY释放并保持1时，pending不得超过2个额外观测周期；若VALID在握手前撤销，由接口assertion报错，不作为合法转换。
 
 ### 6.2 `axi_arbiter_stom_s3`
 
-对 `stateR/stateB` 重复RUN/WAIT矩阵。R每beat握手后回RUN，不等待RLAST；必须覆盖 `RLAST=0` 和 `RLAST=1` 两种返回RUN路径。READY持续为0时允许无限WAIT；READY恢复后2周期内必须观察到握手或VALID已合法撤销。
+对`u_arbiter_r/u_arbiter_b`重复pending矩阵。R每beat握手后释放pending，不等待RLAST；必须覆盖`RLAST=0`和`RLAST=1`两种释放路径。READY持续为0时允许pending无限保持；READY恢复后2周期内必须观察到握手。
 
 ### 6.3 `axi_default_slave` 写 FSM
 
@@ -204,7 +205,7 @@
 
 ### 6.6 非法状态检查
 
-bind assertions约束 `stateAR/stateAW/stateW/stateR/stateB` 仅为RUN/WAIT，default读写状态仅为各自四个localparam。由于部分case无default，任何X/非法编码立即失败，不尝试把恢复行为当作通过条件。
+bind checker约束五个round-robin的grant one-hot、候选合法性、pending稳定及`last_winner`提交；default读写状态仍只允许各自四个localparam，任何X/非法编码立即失败，不尝试把恢复行为当作通过条件。
 
 ## 7. Arbitration & Scheduling
 
@@ -321,10 +322,10 @@ bind assertions约束 `stateAR/stateAW/stateW/stateR/stateB` 仅为RUN/WAIT，de
 | `stress_stom_all_active` | Arbitration fairness | S0/S1/S2/default持续向同一M返回B/R | 6个S→M仲裁器 | 10,000 cycles/channel | READY恒1区间内任意4次eligible握手覆盖四来源 | 来源饥饿、payload选错 |
 | `stress_sid_full_read` | Resource exhaustion | 反复填满4项AR表，延迟RLAST后释放 | `ar_sid_buffer` | 10,000 cycles | full期间第5个AR不握手；每次释放后32周期内重新接受1项 | occupancy越界、错误SID通行、死锁 |
 | `stress_sid_full_write` | Resource exhaustion | 反复填满4项AW表，延迟WLAST后释放 | `aw_sid_buffer` | 10,000 cycles | full/释放行为同读侧；所有W只匹配已登记SID | 未登记W握手、表项泄漏 |
-| `stress_backpressure_wave` | Back-pressure propagation | 每64周期轮流阻塞各S READY和各M READY 16周期 | FIFO链、grant WAIT | 10,000 cycles | 上游最终反压；释放后expected/actual队列在256周期内收敛且0 mismatch | payload变化、grant切换、永久堵塞 |
+| `stress_backpressure_wave` | Back-pressure propagation | 每64周期轮流阻塞各S READY和各M READY 16周期 | FIFO链、pending grant | 10,000 cycles | 上游最终反压；释放后expected/actual队列在256周期内收敛且0 mismatch | payload变化、grant切换、永久堵塞 |
 | `stress_default_read_fsm` | FSM stability | 连续1,000笔未命中读，LEN随机0..15 | `STR_*`, countR | 1,000 transactions | 每笔LEN+1个DECERR beat；四状态均覆盖，无非法状态 | beat数/LAST错误、stuck state |
 | `stress_default_write_fsm` | FSM stability | 连续1,000笔未命中写，BREADY随机 | `STW_*`, countW | 1,000 transactions | 每笔1个DECERR B；四状态均覆盖，无非法状态 | 多/少响应、stuck state |
-| `stress_arbiter_wait_states` | FSM stability | 每次获grant后随机stall 1..32周期 | 五类RUN/WAIT FSM | 1,000 transactions/FSM | WAIT期间grant稳定；ready恢复后2周期内握手 | grant/payload改变、未退出WAIT |
+| `stress_arbiter_pending` | Pending stability | 每次获grant后随机stall 1..32周期 | 五类round-robin pending状态 | 1,000 transactions/channel | pending期间grant稳定；ready恢复后2周期内握手并提交pointer | grant/payload改变、pending未释放 |
 | `stress_full_concurrency` | Multi-interface concurrency | 3M和3S五通道全速、随机目标/ID/LEN | crossbar全路径 | 5,000 cycles | 9条route组合和5通道均命中；0 scoreboard mismatch；无端口永久饥饿 | drop/duplicate/misroute/deadlock |
 | `stress_error_under_load` | Error injection under load | 90%合法流量，10%未命中/错误SID/LAST/ID错误 | default与checker | 2,000 cycles | 每个错误由指定DECERR、日志或assertion捕获；合法事务0 mismatch | 静默错误、合法事务受污染 |
 | `stress_sid_clear_backpressure` | Known-risk exposure | 出口FIFO满时持续末beatVALID | SID clear路径 | 2,000 cycles | `p_sid_clear_on_handshake`必须捕获当前RTL提前clear；修复后应0失败且SID保持到握手 | 缺陷未被checker发现 |
@@ -356,7 +357,7 @@ bind assertions约束 `stateAR/stateAW/stateW/stateR/stateB` 仅为RUN/WAIT，de
 | Line coverage | ≥95% | 仿真专用、非法参数和不可达防御代码可逐条说明 |
 | Branch coverage | ≥95% | 未命中的case/default必须给出不可达证明或补测试 |
 | Condition coverage | ≥90% | 地址比较、full/empty、grant、LAST各布尔项独立取真/假 |
-| FSM state/transition coverage | 100% legal | 五类RUN/WAIT和default 8个命名状态的全部合法弧 |
+| State/transition coverage | 100% legal | 五类pending 0/1转换和default 8个命名状态的全部合法弧 |
 
 ### 14.2 Functional Coverage Targets
 

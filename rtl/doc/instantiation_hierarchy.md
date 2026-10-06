@@ -1,11 +1,14 @@
 # AXI Interconnect — 模块例化层次结构
 
-**Author**: CodeBuddy | Hy3-High
+**Author**: Ser-Wang, CodeBuddy, Hy3-High
 **Created**: 2026-10-02 11:30
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 更新仲裁策略修改影响范围，指向round-robin候选、pending/accept状态及wrapper握手生成逻辑。
 - **v1.0** (2026-10-02 11:30): 首次生成模块例化层次结构文档，含 `instance : module` 带中文注释的例化树、模块直接下级索引、例化深度、扇出说明与修改影响对照；采用 `[Harness] | [Model]` header 与版本记录格式。
+
+---
 
 > 范围：本文件仅依据 `./rtl` 目录下的可综合 RTL 静态例化关系整理。仿真顶层
 > `axi_interconnect_tb` 不属于综合层次，仅在文末单列。
@@ -120,5 +123,5 @@ axi_interconnect_tb                         仿真顶层
 | 增/减 slave | 在 `axi_crossbar` 增加 `axi_mtos_m3`；扩大 `axi_stom_s3` 响应源数（NUM+1）→ `round_robin_s2m` 位宽；扩展 `axi_interconnect` 的 FIFO `generate` 循环 |
 | 增/减 master | 扩展每个 `axi_mtos_m3` 的 master 端口组、`axi_arbiter_mtos_m3`（NUM=3→N）+ `round_robin_m2s`、FIFO 循环、`reorder`/`sid_buffer` 位宽 |
 | 改变 FIFO 深度 | 仅 `axi_fifo_sync` 的 `FAW` 参数；层次不变 |
-| 改变仲裁策略 | `round_robin_m2s` / `round_robin_s2m` 以及 `axi_arbiter_*m3` 中的 RUN/WAIT 保持状态机 |
+| 改变仲裁策略 | `round_robin_m2s` / `round_robin_s2m`中的候选计算、pending保持和accept提交，以及`axi_arbiter_*m3`中的通道accept生成 |
 | 改变排序规则 | 顶层的 `sid_buffer` + `reorder`（及其 `w_order_grant`/`r_order_grant` 经 `axi_crossbar`、`axi_mtos_m3`/`axi_stom_s3` 的连线） |

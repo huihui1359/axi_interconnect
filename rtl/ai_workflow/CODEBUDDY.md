@@ -1,5 +1,15 @@
 # CODEBUDDY.md This file provides guidance to CodeBuddy when working with code in this repository.
 
+**Author**: Ser-Wang, CodeBuddy, ?; Codex, ?
+**Created**: 2026-10-02 01:52
+**Current Version**: v1.1
+
+**Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 更新仲裁维护指南，记录wrapper accept生成和round-robin内部pending grant保持职责。
+- **v1.0** (2026-10-02 01:52): 初版RTL维护指南，描述互连结构、数据流、仲裁、顺序控制和构建方式。
+
+---
+
 > Scope: This analysis covers ONLY the digital front-end RTL design under `./rtl`. It is
 > intended as foundational guidance for any future analysis, modification, or generation
 > of RTL in this directory. Paths outside `./rtl` (e.g. `dv/`, `uvm_tb/`, `sim/`) are
@@ -111,17 +121,15 @@ and a shift-delete on clear. `full = (sid_buffer[3] != 0)`.
 
 ## 6. Arbiters and round-robin
 
-- `axi_arbiter_mtos_m3`: 3-way arbiters for AW/W/AR. Each = `round_robin_m2s` (3-bit) +
-  a `RUN/WAIT` FSM. The FSM **holds** the grant (`*grant_reg`) when the handshake is not
-  yet completed (`~(GRANT & *READY)`) so a higher-priority requester cannot preempt a
-  transaction in progress. W arbiter input is `WSELECT_in = WSELECT & w_order_grant`.
+- `axi_arbiter_mtos_m3`: 3-way arbiters for AW/W/AR. Each wrapper forms a channel
+  `accept = |(GRANT & VALID & READY)` for its `round_robin_m2s`; W arbiter input remains
+  `WSELECT_in = WSELECT & w_order_grant`.
 - `axi_arbiter_stom_s3`: 4-way arbiters for B/R (`reg [NUM:0]` → 4 sources) using
-  `round_robin_s2m` (4-bit) + same RUN/WAIT hold logic. R arbiter input is already gated
-  by `r_order_grant` upstream in `axi_stom_s3`.
+  `round_robin_s2m` (4-bit) with the same accept contract. R arbiter input is already
+  gated by `r_order_grant` upstream in `axi_stom_s3`.
 - `round_robin_m2s` / `round_robin_s2m`: rotating-priority arbiters. They remember
-  `last_winner` and grant the next requester after it (wrapping), giving fairness. Pure
-  combinational `curr_winner` from `last_winner`+`req`; `last_winner` updates only when a
-  request is present.
+  `last_winner` and grant the next requester after it (wrapping). An unaccepted grant is
+  held in `pending_winner`; `last_winner` advances to the actual grant only on `accept`.
 
 ## 7. `axi_default_slave.v`
 
@@ -161,8 +169,8 @@ destination master. Keep this layout consistent whenever touching decode/routing
 - Never break the gating chain in §5 — the reorder-ready signals (`*_clr_rdy`,
   `*_push_rdy`) are what keep the ROB from overflowing and keep response/master mapping
   correct. If you add ordering rules, feed them through `w_order_grant`/`r_order_grant`.
-- Arbitration fairness lives in `round_robin_*`. The RUN/WAIT hold FSM in `axi_arbiter_*`
-  is what preserves in-flight handshake atomicity — do not remove it.
+- Arbitration fairness and pending-grant stability live in `round_robin_*`; the
+  `axi_arbiter_*` wrappers must provide the exact channel `accept` handshake.
 - AXI3 semantics: bursts ≤16 beats, separate WID per master, no AxLOCK/QoS. Validate
   `WLAST` counting and `BID`/`RID` field extraction if widths change.
 

@@ -3,21 +3,30 @@ module round_robin_s2m (
     input        rst_n  ,
  
     input  [3:0] req    ,
+    input        accept ,
     output [3:0] sel     
 );
 
-wire          rr_vld       ;     
- 
 reg [3:0]    last_winner   ;     
 reg [3:0]    curr_winner   ;     
- 
-assign rr_vld = req[0] | req[1] | req[2] | req[3];   // 产生调度使能信号 
- 
+reg [3:0]    pending_winner;
+reg          pending_valid ;
+
+// Hold an unaccepted selection locally and advance fairness only on accept.
 always @ (posedge clk or negedge rst_n) begin 
-    if (rst_n == 1'b0) 
-        last_winner <= 4'b0; 
-    else if (rr_vld == 1'b1)  
-        last_winner <= curr_winner;           // 记录上一次调度的队列 
+    if (rst_n == 1'b0) begin
+        last_winner    <= 4'b0;
+        pending_winner <= 4'b0;
+        pending_valid  <= 1'b0;
+    end
+    else if (accept == 1'b1) begin
+        last_winner   <= sel;
+        pending_valid <= 1'b0;
+    end
+    else if ((pending_valid == 1'b0) && (|sel)) begin
+        pending_winner <= sel;
+        pending_valid  <= 1'b1;
+    end
 end 
  
 always @ (*) begin 
@@ -71,6 +80,6 @@ always @ (*) begin
     end     
 end 
    
-assign sel = curr_winner;  
+assign sel = pending_valid ? pending_winner : curr_winner;
 
 endmodule

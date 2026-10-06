@@ -1,11 +1,12 @@
 # AXI Interconnect RTL 层次结构说明
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar Medium
-**Created**: 2026-09-27 ??:??
-**Current Version**: v1.0
+**Created**: 2026-10-02 01:52
+**Current Version**: v1.1
 
 **Version Changelog**:
-- **v1.0** (2026-09-27 ??:??): 初版 RTL 层次结构说明，整理完整例化树、各层职责、五通道路径、源文件索引和静态结构限制。
+- **v1.1** (2026-10-07 00:19): 更新 M→S 与 S→M 仲裁层次说明，将握手前 grant 保持职责归入 round-robin 内部 pending 状态。
+- **v1.0** (2026-10-02 01:52): 初版 RTL 层次结构说明，整理完整例化树、各层职责、五通道路径、源文件索引和静态结构限制。
 
 ---
 
@@ -269,7 +270,7 @@ FIFO 的层次命名约定：
 
 文件：`axi_arbiter_mtos_m3.v`、`round_robin_m2s.v`
 
-`axi_arbiter_mtos_m3` 内含 3 个独立的 3 路 round-robin 仲裁器，分别服务 AR、AW、W。外层状态机在一次传输尚未完成时保持当前 grant，避免新的高优先级请求中途改变选择。
+`axi_arbiter_mtos_m3`内含3个独立的3路round-robin仲裁器，分别服务AR、AW、W。wrapper生成各通道accept；round-robin内部在握手完成前保持pending grant，避免新的高优先级请求中途改变选择。
 
 ### 3.5 `axi_stom_s3`：4 个响应源到单个 master
 
@@ -283,7 +284,7 @@ R 通道还与顶层传入的 `r_order_grant` 相与，使返回数据受到全�
 
 文件：`axi_arbiter_stom_s3.v`、`round_robin_s2m.v`
 
-`axi_arbiter_stom_s3` 内含两个独立的 4 路 round-robin 仲裁器，分别服务 R 和 B。外层状态机负责在握手完成前保持 grant。尽管文件名为 `s3`，底层 `round_robin_s2m` 的请求/grant 宽度是 4，以覆盖 default slave。
+`axi_arbiter_stom_s3`内含两个独立的4路round-robin仲裁器，分别服务R和B。pending grant由`round_robin_s2m`内部保持，并在通道accept时提交`last_winner`。尽管文件名为`s3`，请求/grant宽度仍为4，以覆盖default slave。
 
 ### 3.7 `sid_buffer` 与 `reorder`：顺序约束层
 

@@ -15,8 +15,8 @@ module axi_stage6_arbiter_assertions_selftest;
     endfunction
   endclass
 
-  logic clk, rst_n, locked;
-  logic [2:0] request, grant, ready, last_winner;
+  logic clk, rst_n, locked, accept;
+  logic [2:0] request, grant, last_winner;
   arbiter_report_catcher report_catcher;
 
   axi_stage6_rr_pointer_checker #(
@@ -26,7 +26,7 @@ module axi_stage6_arbiter_assertions_selftest;
   always #5ns clk = ~clk;
 
   initial begin
-    clk=0; rst_n=0; locked=0; request=0; grant=0; ready=0;
+    clk=0; rst_n=0; locked=0; accept=0; request=0; grant=0;
     last_winner=0;
     report_catcher = new();
     uvm_report_cb::add(null, report_catcher);

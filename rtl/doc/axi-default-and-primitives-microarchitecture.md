@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 更新轮询原语为内部 pending grant 保持和 accept 提交模型，明确 `last_winner` 只记录成功服务者。
 - **v1.0** (2026-10-04 20:10): 初版默认从设备与基础单元微架构，描述 default read/write FSM、同步 FIFO、轮询原语、握手语义和实现风险。
 
 ---
@@ -65,12 +66,12 @@
 
 ## 3. `round_robin_m2s`
 
-三路请求，输出 one-hot `sel[2:0]`。复位后 `last_winner=0`，初始优先级 0>1>2；此后从上次 winner 的下一项循环扫描。任何请求存在时就在时钟沿记录组合 `curr_winner`，不关心真正握手。
+三路请求，输出one-hot `sel[2:0]`。复位后`last_winner=0`，初始优先级0>1>2；此后从上次成功服务的winner下一项循环扫描。`sel`在无pending时取组合`curr_winner`，未accept时保存为`pending_winner`，只在accept时更新`last_winner`。
 
 ## 4. `round_robin_s2m`
 
-四路版本，顺序 0→1→2→3→0。复位后初始优先级 0>1>2>3。行为与三路版本相同。
+四路版本，顺序0→1→2→3→0。复位后初始优先级0>1>2>3，pending保持和accept提交行为与三路版本相同。
 
 ## 5. 仲裁原语的使用约束
 
-由于轮询器没有 ready/accept 输入，调用者必须在反压时保存 grant；两个 `axi_arbiter_*` 正是这样做的。若未来独立复用轮询器，不得假设 `last_winner` 表示“最后成功服务者”，它只表示“最后一次组合选中者”。两个原语 assertion 数均为 0。
+轮询器接收标量`accept`，但不直接解释具体通道的VALID/READY；调用wrapper负责用`grant & VALID & READY`生成accept。轮询器内部保持pending grant，`last_winner`表示最后成功服务者。两个原语本身不含内联assertion，DV通过bind checker检查one-hot、轮询顺序、pending稳定和指针提交。

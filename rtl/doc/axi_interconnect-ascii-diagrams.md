@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 澄清仲裁RUN/WAIT图仅为行为示意，实际保持状态已集中到round-robin的pending寄存器。
 - **v1.0** (2026-10-04 20:10): 初版字符结构图与数据流说明，展示全局矩阵、读写路径、SID 布局、SID 表、反压、仲裁、FIFO 和 default slave 时序。
 
 ---
@@ -197,7 +198,7 @@
                     saved grant valid && ready handshake
 ```
 
-AW、AR、W、B、R 各有自己的 RUN/WAIT 实例。W/R 在每个 beat 握手后回 RUN，不保持到 LAST。
+图中的RUN/WAIT是行为示意，不再对应wrapper中的显式FSM。AW、AR、W、B、R各自通过round-robin内部`pending_valid/pending_winner`实现同等保持；W/R在每个beat握手后释放pending，不保持到LAST。
 
 ## 9. FIFO 时序示意
 

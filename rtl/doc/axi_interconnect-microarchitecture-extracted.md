@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 00:19): 更新请求与响应仲裁状态描述，反映round-robin内部pending保持及逐beat accept提交行为。
 - **v1.0** (2026-10-04 20:10): 初版 RTL 反向提取整体微架构，整理模块层次、缓冲结构、接口契约、时序风险、前向进展和模块职责。
 
 ---
@@ -147,13 +148,13 @@ FIFO `Mem` 无 ECC/parity；读为组合式首字直出，写为时钟沿写入�
 ### 17.3 `axi_mtos_m3` / `axi_arbiter_mtos_m3`
 
 - 职责：地址译码、AW/W/AR 三个独立三选一仲裁与 mux。
-- FSM：每通道 RUN/WAIT；WAIT 保存反压期间的 grant。
+- 仲裁状态：各round-robin内部以`pending_valid/pending_winner`保存反压期间的grant，accept时提交`last_winner`。
 - assertion：0。
 
 ### 17.4 `axi_stom_s3` / `axi_arbiter_stom_s3`
 
 - 职责：按 MID 选择 B/R，四选一仲裁与 mux。
-- FSM：B/R 各 RUN/WAIT；逐 beat 完成后回 RUN。
+- 仲裁状态：B/R各自在round-robin内部保持pending grant；逐beat握手后释放并推进轮询指针。
 - assertion：0。
 
 ### 17.5 `sid_buffer` / `reorder`
