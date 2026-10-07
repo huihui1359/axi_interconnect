@@ -16,12 +16,6 @@ module axi_stage6_rr_pointer_checker #(
 
   import uvm_pkg::*;
 
-  logic [WIDTH-1:0] previous_pointer;
-  logic [WIDTH-1:0] previous_grant;
-  logic [WIDTH-1:0] stalled_grant;
-  bit previous_handshake;
-  bit previous_valid;
-  bit stall_active;
   bit enabled;
 
   function automatic logic [WIDTH-1:0] expected_grant(
@@ -49,55 +43,61 @@ module axi_stage6_rr_pointer_checker #(
 
   initial begin
     enabled = ENABLE_ALWAYS || $test$plusargs("UVM_TESTNAME=axi_stage6");
-    previous_valid = 1'b0;
-    previous_handshake = 1'b0;
-    stall_active = 1'b0;
-    previous_pointer = '0;
-    previous_grant = '0;
-    stalled_grant = '0;
   end
 
-  always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      previous_valid <= 1'b0;
-      previous_handshake <= 1'b0;
-      stall_active <= 1'b0;
-      previous_pointer <= '0;
-      previous_grant <= '0;
-      stalled_grant <= '0;
-    end
-    else if (enabled) begin
-      if (!$onehot0(grant)) report_error("GRANT_ONEHOT");
-      if (|(grant & ~request) && !locked) report_error("GRANT_WITHOUT_REQUEST");
-      if (!locked && (grant !== expected_grant(request, last_winner)))
-        report_error("ROUND_ROBIN_ORDER");
+  // ARB-SVA-001: grant在任意有效检查周期最多只能选择一个请求端。
+  property p_grant_onehot;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      $onehot0(grant);
+  endproperty
 
-      if (previous_valid) begin
-        if (previous_handshake) begin
-          if (last_winner !== previous_grant)
-            report_error("POINTER_NOT_UPDATED_ON_HANDSHAKE");
-        end
-        else if (last_winner !== previous_pointer) begin
-          report_error("POINTER_CHANGED_WITHOUT_HANDSHAKE");
-        end
-      end
+  // ARB-SVA-002: 非锁定状态下，grant只能授予当前正在请求的端口。
+  property p_grant_has_request;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      !locked |-> ((grant & ~request) == '0);
+  endproperty
 
-      if ((|grant) && !accept) begin
-        if (stall_active && (grant !== stalled_grant))
-          report_error("GRANT_CHANGED_WHILE_STALLED");
-        stall_active <= 1'b1;
-        stalled_grant <= grant;
-      end
-      else begin
-        stall_active <= 1'b0;
-      end
+  // ARB-SVA-003: 非锁定状态下，grant必须符合last_winner定义的round-robin顺序。
+  property p_round_robin_order;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      !locked |-> (grant == expected_grant(request, last_winner));
+  endproperty
 
-      previous_valid <= 1'b1;
-      previous_handshake <= accept;
-      previous_pointer <= last_winner;
-      previous_grant <= grant;
-    end
-  end
+  // ARB-SVA-004: 本周期accept后，下一采样周期的last_winner必须记录本次grant。
+  property p_pointer_updated_on_accept;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      accept |=> (last_winner == $past(grant));
+  endproperty
+
+  // ARB-SVA-005: 本周期没有accept时，下一采样周期的last_winner必须保持不变。
+  property p_pointer_stable_without_accept;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      !accept |=> $stable(last_winner);
+  endproperty
+
+  // ARB-SVA-006: grant尚未被accept时，下一采样周期必须继续保持同一个grant。
+  property p_grant_stable_while_stalled;
+    @(posedge clk) disable iff ((rst_n !== 1'b1) || !enabled)
+      ((|grant) && !accept) |=> $stable(grant);
+  endproperty
+
+  a_grant_onehot: assert property (p_grant_onehot)
+    else report_error("GRANT_ONEHOT");
+
+  a_grant_has_request: assert property (p_grant_has_request)
+    else report_error("GRANT_WITHOUT_REQUEST");
+
+  a_round_robin_order: assert property (p_round_robin_order)
+    else report_error("ROUND_ROBIN_ORDER");
+
+  a_pointer_updated_on_accept: assert property (p_pointer_updated_on_accept)
+    else report_error("POINTER_NOT_UPDATED_ON_HANDSHAKE");
+
+  a_pointer_stable_without_accept: assert property (p_pointer_stable_without_accept)
+    else report_error("POINTER_CHANGED_WITHOUT_HANDSHAKE");
+
+  a_grant_stable_while_stalled: assert property (p_grant_stable_while_stalled)
+    else report_error("GRANT_CHANGED_WHILE_STALLED");
 
 endmodule
 
