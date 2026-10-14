@@ -1,9 +1,3 @@
-// crush: break long runs of same-class delays on the emitted output.
-//   crush_en && N consecutive "small"  delays -> force one crush_large_val
-//   crush_en && N consecutive "large"  delays -> force one crush_small_val
-//   Classification is done on the returned delay value (not on mode);
-//   applied at the get_delay() return boundary.
-
 `ifndef LATENCY_GEN_SV
 `define LATENCY_GEN_SV
 
@@ -94,8 +88,8 @@ class latency_gen extends uvm_object;
         fixed_delay = 5;
         crush_small_th  = 8;            // d <= 8   => small
         crush_large_th  = 64;           // d >= 64  => large
-        crush_small_run = 10;            // 100 smalls then one large
-        crush_large_run = 10;            // 100 larges  then one small
+        crush_small_run = 256;             // N smalls then one large
+        crush_large_run = 256;             // N larges  then one small
         crush_small_val = 0;
         crush_large_val = MAX_DELAY_CAP;
     endfunction
@@ -113,10 +107,10 @@ function int unsigned latency_gen::get_delay();
             burst_count      = 0;
         end
 
-        `uvm_info(get_type_name(),
-                  $sformatf("mode=%s burst_count=%0d burst_len=%0d delay=%0d",
-                            mode.name(), burst_count, active_burst_len, delay),
-                  UVM_HIGH)
+        //`uvm_info(get_type_name(),
+        //          $sformatf("mode=%s burst_count=%0d burst_len=%0d delay=%0d",
+        //                    mode.name(), burst_count, active_burst_len, delay),
+        //          UVM_HIGH)
 
         if(burst_count == (active_burst_len - 1)) begin
             burst_active = 0;
