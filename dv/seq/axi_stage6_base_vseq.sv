@@ -16,6 +16,7 @@ class axi_stage6_base_vseq extends uvm_sequence;
   virtual function bit [AXI_ADDR_WIDTH-1:0] route_address(
     int unsigned slave_index
   );
+  //为slave对应编号，返回合法地址
     case (slave_index)
       0: return 32'h0000_0100;
       1: return 32'h0000_2100;
@@ -55,7 +56,7 @@ class axi_stage6_base_vseq extends uvm_sequence;
     target_id = map.build_master_id(index_route(slave_index), tag);
     target_addr = route_address(slave_index);
     target_data = data;
-
+//将此seq启动在m_agent.sequencer上
     `uvm_do_on_with(seq, p_sequencer.m_seqr[master_index], {
       id    == local::target_id;
       addr  == local::target_addr;
