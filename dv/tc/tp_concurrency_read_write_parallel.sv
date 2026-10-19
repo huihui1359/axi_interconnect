@@ -1,15 +1,15 @@
-`ifndef AXI_STAGE2_READ_WRITE_PARALLEL_TEST_SV
-`define AXI_STAGE2_READ_WRITE_PARALLEL_TEST_SV
+`ifndef TP_CONCURRENCY_READ_WRITE_PARALLEL_SV
+`define TP_CONCURRENCY_READ_WRITE_PARALLEL_SV
 
-class axi_stage2_read_write_parallel_test extends axi_stage2_base_test;
+class tp_concurrency_read_write_parallel extends axi_stage2_base_test;
 
   typedef virtual axi_if #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
   ).mon_mp vif_t;
 
-  `uvm_component_utils(axi_stage2_read_write_parallel_test)
+  `uvm_component_utils(tp_concurrency_read_write_parallel)
 
-  function new(string name = "axi_stage2_read_write_parallel_test",
+  function new(string name = "tp_concurrency_read_write_parallel",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -19,7 +19,7 @@ class axi_stage2_read_write_parallel_test extends axi_stage2_base_test;
 
 endclass
 
-task axi_stage2_read_write_parallel_test::check_parallel_progress(vif_t vif);
+task tp_concurrency_read_write_parallel::check_parallel_progress(vif_t vif);
   bit write_wait_b;
   bit read_wait_last;
   bit read_progress_while_write_waits;
@@ -43,7 +43,7 @@ task axi_stage2_read_write_parallel_test::check_parallel_progress(vif_t vif);
   end
 endtask
 
-task axi_stage2_read_write_parallel_test::run_phase(uvm_phase phase);
+task tp_concurrency_read_write_parallel::run_phase(uvm_phase phase);
   axi_stage2_read_write_parallel_sequence scenario;
 
   phase.raise_objection(this);
@@ -55,7 +55,7 @@ task axi_stage2_read_write_parallel_test::run_phase(uvm_phase phase);
   fork
     check_parallel_progress(env_cfg.m_cfg[0].mon_vif);
     run_stage2_scenario(scenario, 1, 1,
-                        "axi_stage2_read_write_parallel_test");
+                        "tp_concurrency_read_write_parallel");
   join
   phase.drop_objection(this);
 endtask

@@ -1,7 +1,7 @@
-`ifndef AXI_STAGE2_CHANNEL_STALL_TEST_SV
-`define AXI_STAGE2_CHANNEL_STALL_TEST_SV
+`ifndef TP_CHANNEL_BACKPRESSURE_SV
+`define TP_CHANNEL_BACKPRESSURE_SV
 
-class axi_stage2_channel_stall_test extends axi_stage2_base_test;
+class tp_channel_backpressure extends axi_stage2_base_test;
 
   typedef virtual axi_if #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
@@ -10,9 +10,9 @@ class axi_stage2_channel_stall_test extends axi_stage2_base_test;
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
   ).mon_mp s_vif_t;
 
-  `uvm_component_utils(axi_stage2_channel_stall_test)
+  `uvm_component_utils(tp_channel_backpressure)
 
-  function new(string name = "axi_stage2_channel_stall_test",
+  function new(string name = "tp_channel_backpressure",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -22,7 +22,7 @@ class axi_stage2_channel_stall_test extends axi_stage2_base_test;
 
 endclass
 
-task axi_stage2_channel_stall_test::check_channel_stalls(
+task tp_channel_backpressure::check_channel_stalls(
   m_vif_t m_vif,
   s_vif_t s_vif
 );
@@ -52,7 +52,7 @@ task axi_stage2_channel_stall_test::check_channel_stalls(
       aw_stalled, w_stalled, b_stalled, ar_stalled, r_stalled))
 endtask
 
-task axi_stage2_channel_stall_test::run_phase(uvm_phase phase);
+task tp_channel_backpressure::run_phase(uvm_phase phase);
   axi_stage2_channel_stall_sequence scenario;
 
   phase.raise_objection(this);
@@ -63,7 +63,7 @@ task axi_stage2_channel_stall_test::run_phase(uvm_phase phase);
     check_channel_stalls(env_cfg.m_cfg[0].mon_vif,
                          env_cfg.s_cfg[0].mon_vif);
     run_stage2_scenario(scenario, 1, 1,
-                        "axi_stage2_channel_stall_test");
+                        "tp_channel_backpressure");
   join
   phase.drop_objection(this);
 endtask

@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE3_MIXED_RW_TEST_SV
-`define AXI_STAGE3_MIXED_RW_TEST_SV
+`ifndef TP_OUTSTANDING_MIXED_RW_SV
+`define TP_OUTSTANDING_MIXED_RW_SV
 
-class axi_stage3_mixed_rw_test extends axi_stage3_base_test;
+class tp_outstanding_mixed_rw extends axi_stage3_base_test;
 
-  `uvm_component_utils(axi_stage3_mixed_rw_test)
+  `uvm_component_utils(tp_outstanding_mixed_rw)
 
-  function new(string name = "axi_stage3_mixed_rw_test",
+  function new(string name = "tp_outstanding_mixed_rw",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -20,7 +20,7 @@ class axi_stage3_mixed_rw_test extends axi_stage3_base_test;
     env.stage3_checker.set_expected_counts(4, 4);
     start_stage3_scenario(scenario);
     wait_for_stage3_counts(4, 4);
-    finish_stage3_test("axi_stage3_mixed_rw_test",
+    finish_stage3_test("tp_outstanding_mixed_rw",
                        4, 4, 0, 0, 1'b1, 1'b1);
     phase.drop_objection(this);
   endtask

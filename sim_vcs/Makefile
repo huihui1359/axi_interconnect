@@ -4,7 +4,7 @@
 SHELL := /bin/bash
 
 TOP       ?= tb
-TEST      ?= axi_stage1_single_read_test
+TEST      ?= tp_read_end_to_end
 SEED      ?= 1
 VERBOSITY ?= UVM_LOW
 DUMP      ?= 0

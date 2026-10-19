@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE3_OUTSTANDING_STALL_TEST_SV
-`define AXI_STAGE3_OUTSTANDING_STALL_TEST_SV
+`ifndef TP_BACKPRESSURE_OUTSTANDING_SV
+`define TP_BACKPRESSURE_OUTSTANDING_SV
 
-class axi_stage3_outstanding_stall_test extends axi_stage3_base_test;
+class tp_backpressure_outstanding extends axi_stage3_base_test;
 
-  `uvm_component_utils(axi_stage3_outstanding_stall_test)
+  `uvm_component_utils(tp_backpressure_outstanding)
 
-  function new(string name = "axi_stage3_outstanding_stall_test",
+  function new(string name = "tp_backpressure_outstanding",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -20,7 +20,7 @@ class axi_stage3_outstanding_stall_test extends axi_stage3_base_test;
     env.stage3_checker.set_expected_counts(4, 4);
     start_stage3_scenario(scenario);
     wait_for_stage3_counts(4, 4);
-    finish_stage3_test("axi_stage3_outstanding_stall_test",
+    finish_stage3_test("tp_backpressure_outstanding",
                        4, 4, 4, 4, 1'b1);
     phase.drop_objection(this);
   endtask

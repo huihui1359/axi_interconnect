@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE2_BURST_READ_TEST_SV
-`define AXI_STAGE2_BURST_READ_TEST_SV
+`ifndef TP_BURST_LENGTHS_READ_SV
+`define TP_BURST_LENGTHS_READ_SV
 
-class axi_stage2_burst_read_test extends axi_stage2_base_test;
+class tp_burst_lengths_read extends axi_stage2_base_test;
 
-  `uvm_component_utils(axi_stage2_burst_read_test)
+  `uvm_component_utils(tp_burst_lengths_read)
 
-  function new(string name = "axi_stage2_burst_read_test",
+  function new(string name = "tp_burst_lengths_read",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -18,7 +18,7 @@ class axi_stage2_burst_read_test extends axi_stage2_base_test;
     scenario = axi_stage2_burst_read_sequence::type_id::create("scenario");
     wait_for_reset_release();
     run_stage2_scenario(scenario, 0, 36,
-                        "axi_stage2_burst_read_test");
+                        "tp_burst_lengths_read");
     phase.drop_objection(this);
   endtask
 

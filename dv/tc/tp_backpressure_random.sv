@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE2_READY_RANDOM_SMOKE_TEST_SV
-`define AXI_STAGE2_READY_RANDOM_SMOKE_TEST_SV
+`ifndef TP_BACKPRESSURE_RANDOM_SV
+`define TP_BACKPRESSURE_RANDOM_SV
 
-class axi_stage2_ready_random_smoke_test extends axi_stage2_base_test;
+class tp_backpressure_random extends axi_stage2_base_test;
 
-  `uvm_component_utils(axi_stage2_ready_random_smoke_test)
+  `uvm_component_utils(tp_backpressure_random)
 
-  function new(string name = "axi_stage2_ready_random_smoke_test",
+  function new(string name = "tp_backpressure_random",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -20,7 +20,7 @@ class axi_stage2_ready_random_smoke_test extends axi_stage2_base_test;
     );
     wait_for_reset_release();
     run_stage2_scenario(scenario, 8, 8,
-                        "axi_stage2_ready_random_smoke_test");
+                        "tp_backpressure_random");
     phase.drop_objection(this);
   endtask
 

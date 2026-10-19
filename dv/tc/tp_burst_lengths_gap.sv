@@ -1,7 +1,7 @@
-`ifndef AXI_STAGE2_DELAY_GAP_TEST_SV
-`define AXI_STAGE2_DELAY_GAP_TEST_SV
+`ifndef TP_BURST_LENGTHS_GAP_SV
+`define TP_BURST_LENGTHS_GAP_SV
 
-class axi_stage2_delay_gap_test extends axi_stage2_base_test;
+class tp_burst_lengths_gap extends axi_stage2_base_test;
 
   typedef virtual axi_if #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
@@ -10,9 +10,9 @@ class axi_stage2_delay_gap_test extends axi_stage2_base_test;
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_S_ID_WIDTH, AXI_LEN_WIDTH
   ).mon_mp s_vif_t;
 
-  `uvm_component_utils(axi_stage2_delay_gap_test)
+  `uvm_component_utils(tp_burst_lengths_gap)
 
-  function new(string name = "axi_stage2_delay_gap_test",
+  function new(string name = "tp_burst_lengths_gap",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -22,7 +22,7 @@ class axi_stage2_delay_gap_test extends axi_stage2_base_test;
 
 endclass
 
-task axi_stage2_delay_gap_test::check_beat_gaps(
+task tp_burst_lengths_gap::check_beat_gaps(
   m_vif_t m_vif,
   s_vif_t s_vif
 );
@@ -65,7 +65,7 @@ task axi_stage2_delay_gap_test::check_beat_gaps(
   end
 endtask
 
-task axi_stage2_delay_gap_test::run_phase(uvm_phase phase);
+task tp_burst_lengths_gap::run_phase(uvm_phase phase);
   axi_stage2_delay_gap_sequence scenario;
 
   phase.raise_objection(this);
@@ -76,7 +76,7 @@ task axi_stage2_delay_gap_test::run_phase(uvm_phase phase);
     check_beat_gaps(env_cfg.m_cfg[0].mon_vif,
                     env_cfg.s_cfg[0].mon_vif);
     run_stage2_scenario(scenario, 1, 1,
-                        "axi_stage2_delay_gap_test");
+                        "tp_burst_lengths_gap");
   join
   phase.drop_objection(this);
 endtask

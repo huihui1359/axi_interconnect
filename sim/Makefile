@@ -19,7 +19,7 @@ FILELIST ?= sim.f
 dump      ?= n
 cov       ?= n
 rand      ?= n
-test      ?= axi_stage1_single_write_test
+test      ?= tp_write_end_to_end
 reg_times ?= 20
 
 # Questa 10.6c interprets an environment variable named "dump" as an
@@ -146,16 +146,16 @@ regress: com
 	powershell -NoProfile -Command "for ($$index = 1; $$index -le $(reg_times); $$index++) { $$reg_seed = Get-Random -Minimum 1 -Maximum 2147483647; & '$(MAKE)' sim test='$(test)' SEED=$$reg_seed dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 stage2_regress: com
-	powershell -NoProfile -Command "$$tests = @('axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+	powershell -NoProfile -Command "$$tests = @('tp_burst_lengths_write','tp_burst_lengths_read','tp_write_end_to_end_aw_w_order','tp_burst_lengths_gap','tp_channel_backpressure','tp_concurrency_read_write_parallel','tp_backpressure_random'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 stage3_regress: com
-	powershell -NoProfile -Command "$$tests = @('axi_stage3_outstanding_write_test','axi_stage3_outstanding_read_test','axi_stage3_write_ooo_test','axi_stage3_read_ooo_test','axi_stage3_same_id_order_test','axi_stage3_mixed_rw_test','axi_stage3_id_mapping_test','axi_stage3_outstanding_stall_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+	powershell -NoProfile -Command "$$tests = @('tp_sid_table_depth_write','tp_sid_table_depth_read','tp_sid_membership_write_ooo','tp_sid_membership_read_ooo','tp_sid_membership_same_id_order','tp_outstanding_mixed_rw','tp_sid_exhaustive_local','tp_backpressure_outstanding'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 stage6_regress: com
-	powershell -NoProfile -Command "$$tests = @('axi_stage6_route_matrix_test','axi_stage6_id_matrix_test','axi_stage6_multi_slave_parallel_test','axi_stage6_multi_master_write_arb_test','axi_stage6_multi_master_read_arb_test','axi_stage6_response_arb_test','axi_stage6_cross_master_same_id_test','axi_stage6_multiport_outstanding_test','axi_stage6_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+	powershell -NoProfile -Command "$$tests = @('tp_route_matrix_directed','tp_sid_exhaustive','tp_three_target_parallel','tp_mtos_round_robin_write','tp_mtos_round_robin_read','tp_stom_round_robin','tp_sid_membership_cross_master','tp_read_outstanding_multiport','tp_route_matrix_random'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 positive_regress: com
-	powershell -NoProfile -Command "$$tests = @('axi_stage1_single_write_test','axi_stage1_single_read_test','axi_stage2_burst_write_test','axi_stage2_burst_read_test','axi_stage2_aw_w_order_test','axi_stage2_delay_gap_test','axi_stage2_channel_stall_test','axi_stage2_read_write_parallel_test','axi_stage2_ready_random_smoke_test','axi_stage3_outstanding_write_test','axi_stage3_outstanding_read_test','axi_stage3_write_ooo_test','axi_stage3_read_ooo_test','axi_stage3_same_id_order_test','axi_stage3_mixed_rw_test','axi_stage3_id_mapping_test','axi_stage3_outstanding_stall_test','axi_stage6_route_matrix_test','axi_stage6_id_matrix_test','axi_stage6_multi_slave_parallel_test','axi_stage6_multi_master_write_arb_test','axi_stage6_multi_master_read_arb_test','axi_stage6_response_arb_test','axi_stage6_cross_master_same_id_test','axi_stage6_multiport_outstanding_test','axi_stage6_random_smoke_test'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
+	powershell -NoProfile -Command "$$tests = @('tp_write_end_to_end','tp_read_end_to_end','tp_burst_lengths_write','tp_burst_lengths_read','tp_write_end_to_end_aw_w_order','tp_burst_lengths_gap','tp_channel_backpressure','tp_concurrency_read_write_parallel','tp_backpressure_random','tp_sid_table_depth_write','tp_sid_table_depth_read','tp_sid_membership_write_ooo','tp_sid_membership_read_ooo','tp_sid_membership_same_id_order','tp_outstanding_mixed_rw','tp_sid_exhaustive_local','tp_backpressure_outstanding','tp_route_matrix_directed','tp_sid_exhaustive','tp_three_target_parallel','tp_mtos_round_robin_write','tp_mtos_round_robin_read','tp_stom_round_robin','tp_sid_membership_cross_master','tp_read_outstanding_multiport','tp_route_matrix_random'); foreach ($$name in $$tests) { & '$(MAKE)' sim test=$$name dump='$(dump)' cov='$(cov)'; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE } }"
 
 assertion_selftest: com
 	vsim -c -L $(UVM_LIB) -modelsimini $(WORK_DIR)/modelsim.ini \

@@ -1,24 +1,24 @@
-`ifndef AXI_STAGE1_SINGLE_READ_TEST_SV
-`define AXI_STAGE1_SINGLE_READ_TEST_SV
+`ifndef TP_READ_END_TO_END_SV
+`define TP_READ_END_TO_END_SV
 
-class axi_stage1_single_read_test extends axi_base_test;
+class tp_read_end_to_end extends axi_base_test;
 
-  `uvm_component_utils(axi_stage1_single_read_test)
+  `uvm_component_utils(tp_read_end_to_end)
 
-  extern function new(string name = "axi_stage1_single_read_test",
+  extern function new(string name = "tp_read_end_to_end",
                       uvm_component parent = null);
   extern virtual task run_phase(uvm_phase phase);
 
 endclass
 
-function axi_stage1_single_read_test::new(
-  string name = "axi_stage1_single_read_test",
+function tp_read_end_to_end::new(
+  string name = "tp_read_end_to_end",
   uvm_component parent = null
 );
   super.new(name, parent);
 endfunction
 
-task axi_stage1_single_read_test::run_phase(uvm_phase phase);
+task tp_read_end_to_end::run_phase(uvm_phase phase);
   axi_m_single_read_seq read_seq;
   axi_s_single_reactive_seq reactive_seq;
 
@@ -44,7 +44,7 @@ task axi_stage1_single_read_test::run_phase(uvm_phase phase);
   while ((env.stage1_checker.ar_match_count != 1) ||
          (env.stage1_checker.r_match_count  != 1))
     @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
-  finish_test("axi_stage1_single_read_test");
+  finish_test("tp_read_end_to_end");
   phase.drop_objection(this);
 endtask
 

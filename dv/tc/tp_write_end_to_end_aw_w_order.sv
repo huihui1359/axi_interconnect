@@ -1,15 +1,15 @@
-`ifndef AXI_STAGE2_AW_W_ORDER_TEST_SV
-`define AXI_STAGE2_AW_W_ORDER_TEST_SV
+`ifndef TP_WRITE_END_TO_END_AW_W_ORDER_SV
+`define TP_WRITE_END_TO_END_AW_W_ORDER_SV
 
-class axi_stage2_aw_w_order_test extends axi_stage2_base_test;
+class tp_write_end_to_end_aw_w_order extends axi_stage2_base_test;
 
   typedef virtual axi_if #(
     AXI_ADDR_WIDTH, AXI_DATA_WIDTH, AXI_M_ID_WIDTH, AXI_LEN_WIDTH
   ).mon_mp vif_t;
 
-  `uvm_component_utils(axi_stage2_aw_w_order_test)
+  `uvm_component_utils(tp_write_end_to_end_aw_w_order)
 
-  function new(string name = "axi_stage2_aw_w_order_test",
+  function new(string name = "tp_write_end_to_end_aw_w_order",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -19,7 +19,7 @@ class axi_stage2_aw_w_order_test extends axi_stage2_base_test;
 
 endclass
 
-task axi_stage2_aw_w_order_test::check_channel_order(vif_t vif);
+task tp_write_end_to_end_aw_w_order::check_channel_order(vif_t vif);
   longint unsigned aw_cycle;
   longint unsigned first_w_cycle;
   longint unsigned last_w_cycle;
@@ -54,7 +54,7 @@ task axi_stage2_aw_w_order_test::check_channel_order(vif_t vif);
   end
 endtask
 
-task axi_stage2_aw_w_order_test::run_phase(uvm_phase phase);
+task tp_write_end_to_end_aw_w_order::run_phase(uvm_phase phase);
   axi_stage2_aw_w_order_sequence scenario;
 
   phase.raise_objection(this);
@@ -64,7 +64,7 @@ task axi_stage2_aw_w_order_test::run_phase(uvm_phase phase);
   fork
     check_channel_order(env_cfg.m_cfg[0].mon_vif);
     run_stage2_scenario(scenario, 3, 0,
-                        "axi_stage2_aw_w_order_test");
+                        "tp_write_end_to_end_aw_w_order");
   join
   phase.drop_objection(this);
 endtask

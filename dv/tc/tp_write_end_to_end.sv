@@ -1,24 +1,24 @@
-`ifndef AXI_STAGE1_SINGLE_WRITE_TEST_SV
-`define AXI_STAGE1_SINGLE_WRITE_TEST_SV
+`ifndef TP_WRITE_END_TO_END_SV
+`define TP_WRITE_END_TO_END_SV
 
-class axi_stage1_single_write_test extends axi_base_test;
+class tp_write_end_to_end extends axi_base_test;
 
-  `uvm_component_utils(axi_stage1_single_write_test)
+  `uvm_component_utils(tp_write_end_to_end)
 
-  extern function new(string name = "axi_stage1_single_write_test",
+  extern function new(string name = "tp_write_end_to_end",
                       uvm_component parent = null);
   extern virtual task run_phase(uvm_phase phase);
 
 endclass
 
-function axi_stage1_single_write_test::new(
-  string name = "axi_stage1_single_write_test",
+function tp_write_end_to_end::new(
+  string name = "tp_write_end_to_end",
   uvm_component parent = null
 );
   super.new(name, parent);
 endfunction
 
-task axi_stage1_single_write_test::run_phase(uvm_phase phase);
+task tp_write_end_to_end::run_phase(uvm_phase phase);
   axi_m_single_write_seq write_seq;
   axi_s_single_reactive_seq reactive_seq;
 
@@ -46,7 +46,7 @@ task axi_stage1_single_write_test::run_phase(uvm_phase phase);
          (env.stage1_checker.w_match_count  != 1) ||
          (env.stage1_checker.b_match_count  != 1))
     @(posedge env_cfg.m_cfg[0].mon_vif.ACLK);
-  finish_test("axi_stage1_single_write_test");
+  finish_test("tp_write_end_to_end");
   phase.drop_objection(this);
 endtask
 

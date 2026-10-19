@@ -18,6 +18,18 @@ module axi_stage6_rr_pointer_checker #(
 
   bit enabled;
 
+  function automatic bit stage6_test_selected();
+    return $test$plusargs("UVM_TESTNAME=tp_route_matrix_directed") ||
+           $test$plusargs("UVM_TESTNAME=tp_sid_exhaustive") ||
+           $test$plusargs("UVM_TESTNAME=tp_three_target_parallel") ||
+           $test$plusargs("UVM_TESTNAME=tp_mtos_round_robin_write") ||
+           $test$plusargs("UVM_TESTNAME=tp_mtos_round_robin_read") ||
+           $test$plusargs("UVM_TESTNAME=tp_stom_round_robin") ||
+           $test$plusargs("UVM_TESTNAME=tp_sid_membership_cross_master") ||
+           $test$plusargs("UVM_TESTNAME=tp_read_outstanding_multiport") ||
+           $test$plusargs("UVM_TESTNAME=tp_route_matrix_random");
+  endfunction
+
   function automatic logic [WIDTH-1:0] expected_grant(
     logic [WIDTH-1:0] req,
     logic [WIDTH-1:0] pointer
@@ -42,7 +54,7 @@ module axi_stage6_rr_pointer_checker #(
   endtask
 
   initial begin
-    enabled = ENABLE_ALWAYS || $test$plusargs("UVM_TESTNAME=axi_stage6");
+    enabled = ENABLE_ALWAYS || stage6_test_selected();
   end
 
   // ARB-SVA-001: grant在任意有效检查周期最多只能选择一个请求端。

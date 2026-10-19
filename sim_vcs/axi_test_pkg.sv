@@ -9,7 +9,7 @@ package axi_test_pkg;
   import axi_seq_pkg::*;
 
   `include "axi_base_test.sv"
-  `include "axi_stage1_single_write_test.sv"
-  `include "axi_stage1_single_read_test.sv"
+  `include "tp_write_end_to_end.sv"
+  `include "tp_read_end_to_end.sv"
 
 endpackage

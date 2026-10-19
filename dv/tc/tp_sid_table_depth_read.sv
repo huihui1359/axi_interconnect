@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE3_OUTSTANDING_READ_TEST_SV
-`define AXI_STAGE3_OUTSTANDING_READ_TEST_SV
+`ifndef TP_SID_TABLE_DEPTH_READ_SV
+`define TP_SID_TABLE_DEPTH_READ_SV
 
-class axi_stage3_outstanding_read_test extends axi_stage3_base_test;
+class tp_sid_table_depth_read extends axi_stage3_base_test;
 
-  `uvm_component_utils(axi_stage3_outstanding_read_test)
+  `uvm_component_utils(tp_sid_table_depth_read)
 
-  function new(string name = "axi_stage3_outstanding_read_test",
+  function new(string name = "tp_sid_table_depth_read",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -38,7 +38,7 @@ class axi_stage3_outstanding_read_test extends axi_stage3_base_test;
     scenario.same_id = 1'b1;
     start_stage3_scenario(scenario);
     wait_for_stage3_counts(0, expected_reads);
-    finish_stage3_test("axi_stage3_outstanding_read_test",
+    finish_stage3_test("tp_sid_table_depth_read",
                        0, expected_reads, 0, 4, 1'b0, 1'b1);
     phase.drop_objection(this);
   endtask

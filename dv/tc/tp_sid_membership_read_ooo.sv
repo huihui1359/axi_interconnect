@@ -1,11 +1,11 @@
-`ifndef AXI_STAGE3_READ_OOO_TEST_SV
-`define AXI_STAGE3_READ_OOO_TEST_SV
+`ifndef TP_SID_MEMBERSHIP_READ_OOO_SV
+`define TP_SID_MEMBERSHIP_READ_OOO_SV
 
-class axi_stage3_read_ooo_test extends axi_stage3_base_test;
+class tp_sid_membership_read_ooo extends axi_stage3_base_test;
 
-  `uvm_component_utils(axi_stage3_read_ooo_test)
+  `uvm_component_utils(tp_sid_membership_read_ooo)
 
-  function new(string name = "axi_stage3_read_ooo_test",
+  function new(string name = "tp_sid_membership_read_ooo",
                uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -20,7 +20,7 @@ class axi_stage3_read_ooo_test extends axi_stage3_base_test;
     env.stage3_checker.set_expected_counts(0, 4);
     start_stage3_scenario(scenario);
     wait_for_stage3_counts(0, 4);
-    finish_stage3_test("axi_stage3_read_ooo_test",
+    finish_stage3_test("tp_sid_membership_read_ooo",
                        0, 4, 0, 4, 1'b1);
     phase.drop_objection(this);
   endtask
