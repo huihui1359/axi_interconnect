@@ -2,7 +2,7 @@
 `define AXI_STAGE6_VSEQS_SV
 
 // 测试点：遍历 3x3 Master/Slave 路由矩阵，每个组合各发送一笔写和一笔读。
-class axi_stage6_route_matrix_vseq extends axi_stage6_base_vseq;
+class axi_stage6_route_matrix_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_route_matrix_vseq)
   function new(string name="axi_stage6_route_matrix_vseq"); super.new(name); endfunction
   virtual task body();
@@ -25,7 +25,7 @@ class axi_stage6_route_matrix_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：M0 使用 4 种 transaction tag 向 S0 交替读写，检查 ID 编码与返回 ID。
-class axi_stage6_id_matrix_vseq extends axi_stage6_base_vseq;
+class axi_stage6_id_matrix_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_id_matrix_vseq)
   function new(string name="axi_stage6_id_matrix_vseq"); super.new(name); endfunction
   virtual task body();
@@ -42,7 +42,7 @@ class axi_stage6_id_matrix_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：M0 并发访问 S0/S1/S2，检查单 Master 多目标路由与并行处理。
-class axi_stage6_multi_slave_parallel_vseq extends axi_stage6_base_vseq;
+class axi_stage6_multi_slave_parallel_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_multi_slave_parallel_vseq)
   function new(string name="axi_stage6_multi_slave_parallel_vseq"); super.new(name); endfunction
   virtual task body();
@@ -54,7 +54,7 @@ class axi_stage6_multi_slave_parallel_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：M0/M1/M2 同时写 S0，检查多 Master 写请求仲裁及请求无丢失。
-class axi_stage6_multi_master_write_arb_vseq extends axi_stage6_base_vseq;
+class axi_stage6_multi_master_write_arb_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_multi_master_write_arb_vseq)
   function new(string name="axi_stage6_multi_master_write_arb_vseq"); super.new(name); endfunction
   virtual task body();
@@ -68,7 +68,7 @@ class axi_stage6_multi_master_write_arb_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：M0/M1/M2 同时读 S1，检查多 Master 读请求仲裁及响应返回。
-class axi_stage6_multi_master_read_arb_vseq extends axi_stage6_base_vseq;
+class axi_stage6_multi_master_read_arb_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_multi_master_read_arb_vseq)
   function new(string name="axi_stage6_multi_master_read_arb_vseq"); super.new(name); endfunction
   virtual task body();
@@ -80,7 +80,7 @@ class axi_stage6_multi_master_read_arb_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：M0 同时读取 S0/S1/S2，检查多 Slave 响应返回到同一 Master 时的仲裁。
-class axi_stage6_response_arb_vseq extends axi_stage6_base_vseq;
+class axi_stage6_response_arb_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_response_arb_vseq)
   function new(string name="axi_stage6_response_arb_vseq"); super.new(name); endfunction
   virtual task body();
@@ -92,7 +92,7 @@ class axi_stage6_response_arb_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：三个 Master 使用相同原始 ID 读取 S1，检查源端口隔离与响应 ID 恢复。
-class axi_stage6_cross_master_same_id_vseq extends axi_stage6_base_vseq;
+class axi_stage6_cross_master_same_id_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_cross_master_same_id_vseq)
   function new(string name="axi_stage6_cross_master_same_id_vseq"); super.new(name); endfunction
   virtual task body();
@@ -104,7 +104,7 @@ class axi_stage6_cross_master_same_id_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：三个 Master 各发出 4 笔跨 Slave 读请求，检查多端口 outstanding 处理。
-class axi_stage6_multiport_outstanding_vseq extends axi_stage6_base_vseq;
+class axi_stage6_multiport_outstanding_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_multiport_outstanding_vseq)
   function new(string name="axi_stage6_multiport_outstanding_vseq"); super.new(name); endfunction
   virtual task body();
@@ -125,7 +125,7 @@ class axi_stage6_multiport_outstanding_vseq extends axi_stage6_base_vseq;
 endclass
 
 // 测试点：每个 Master/Slave 组合随机执行一次读或写，随机 tag/data 做全端口冒烟。
-class axi_stage6_random_smoke_vseq extends axi_stage6_base_vseq;
+class axi_stage6_random_smoke_vseq extends axi_stage6_directed_vseq;
   `uvm_object_utils(axi_stage6_random_smoke_vseq)
   function new(string name="axi_stage6_random_smoke_vseq"); super.new(name); endfunction
   virtual task body();

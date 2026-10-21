@@ -6,6 +6,9 @@ package axi_seq_pkg;
   import axi_types_pkg::*;
   import axi_env_pkg::*;
 
+  `include "axi_cr_cfg.sv"
+  `include "axi_cr_op.sv"
+  `include "axi_m_cr_seq.sv"
   `include "axi_m_single_write_seq.sv"
   `include "axi_m_single_read_seq.sv"
   `include "axi_s_single_reactive_seq.sv"
@@ -29,6 +32,9 @@ package axi_seq_pkg;
   `include "axi_stage3_outstanding_stall_seq.sv"
   `include "axi_s_stage6_reactive_seq.sv"
   `include "axi_stage6_base_vseq.sv"
+  `include "axi_stage6_directed_vseq.sv"
+  `include "axi_cr_base_vseq.sv"
+  `include "axi_cr_concurrency_vseq.sv"
   `include "axi_stage6_vseqs.sv"
 
 endpackage

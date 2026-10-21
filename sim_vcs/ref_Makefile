@@ -1,0 +1,139 @@
+#============================================================
+# env set
+#============================================================
+PRO_HOME = $(shell pwd)
+				
+ifeq ($(wildcard work), )
+    $(shell mkdir -p work)
+endif
+
+#============================================================
+#function switchs
+#============================================================
+dump ?= n
+cov  ?= n
+rand ?= n
+test ?= pad_buf_directed_test
+reg_times ?= 20
+
+#============================================================
+# set var
+#============================================================
+# dir 
+COV_NAME = $(shell date +%Y%m%d%H%M%S)
+
+ifeq (${rand},y)
+    SEED = $(shell date +%N)
+else
+    SEED = 0
+endif
+
+# uvm options
+UVM_VER       = uvm-1.2 
+UVM_VERBO    ?= LOW
+UVM_OPTION    = +UVM_TR_RECORD 		\
+		+UVM_LOG_RECORD 	\
+		+UVM_NO_RELNOTES 	\
+		+ntb_solver_array_size_warn=100000
+
+# defines
+DEFINES	 = +define+UVM_REPORT_DISABLE_FILE_LINE
+
+# coverage
+ifeq (${cov},y)
+    COV_COM_OPTION = -cm line+cond+fsm+tgl+branch	\
+		     -cm_name ${test}_${COV_NAME} 	\
+		     -cm_hier ${PRO_HOME}/cov_scope.cfg
+    COV_SIM_OPTION = -cm line+cond+fsm+tgl+branch 	\
+		     -cm_name ${test}_${COV_NAME}    	
+endif
+
+#dump wave
+.PHONY: ucli.cmd
+ucli.cmd:
+ifeq ($(dump),n)
+	@echo "run" > ucli.cmd
+else 
+	@echo "fsdbDumpfile ${test}.fsdb" > ucli.cmd
+	@echo "fsdbDumpvars 0 tb_top" >> ucli.cmd
+	@echo "run" >> ucli.cmd
+endif
+
+#compile and simulation command
+COM_CMD = -full64			\
+	  -sverilog			\
+	  +vcs+lic+wait			\
+	  +v2k				\
+	  -timescale=1ns/1ps		\
+	  -l vcs_compile.log		\
+	  ${DEFINES}			\
+	  -debug_access+all		\
+	  -fsdb				\
+	  -f ${PRO_HOME}/sim.f		\
+	  -Mupdate			\
+	  -ntb_opts ${UVM_VER}		\
+	  ${COV_COM_OPTION}		
+
+SIM_CMD = -l ${test}.log		\
+	  -ucli -do ../ucli.cmd		\
+	  +ntb_random_seed=${SEED}	\
+	  +UVM_VERBOSITY=${UVM_VERBO}	\
+	  +UVM_TESTNAME=${test}		\
+	  ${UVM_OPTION}			\
+	  ${COV_SIM_OPTION}
+
+VERDI_CMD = -ntb_opts ${UVM_VER}	\
+	    -sverilog			\
+	    -f ${PRO_HOME}/sim.f	\
+	    -nologo			\
+	    -ssf ${test}.fsdb
+
+VERDI_DBG = -ntb_opts ${UVM_VER}	\
+	    -sverilog			\
+	    -f ${PRO_HOME}/sim.f	\
+	    -uvmDebug			
+
+#============================================================
+# command
+#============================================================
+
+all: clean com sim
+
+#compile
+com:
+	cd ${PRO_HOME}/work && vcs ${COM_CMD}
+
+#simulation
+sim: ucli.cmd
+	cd ${PRO_HOME}/work && ./simv ${SIM_CMD}
+
+#verdi
+verdi:
+	cd ${PRO_HOME}/work && verdi ${VERDI_CMD} 
+
+debug:
+	cd ${PRO_HOME}/work && verdi ${VERDI_DBG} 
+
+#urg
+urg:
+	cd ${PRO_HOME}/work && urg -dir simv.vdb -elfile reset.el -report both
+
+#look coverage with verdi
+cov:
+	cd ${PRO_HOME}/work && verdi -cov -covdir simv.vdb -elfile reset.el
+
+#clean
+clean:
+	cd ${PRO_HOME}/work && ls | grep -v -E "log|fsdb|both|vdb|el"|xargs rm -rf
+
+#clean_all
+clean_all:
+	cd ${PRO_HOME}/work && rm -rf *
+
+#regress
+regress:
+	@for i in $$(seq 1 ${reg_times});do\
+		REG_SEED=$$(( (RANDOM << 15) | i )); \
+		$(MAKE) sim SEED=REG_SEED test=pad_buf_random_test;\
+	done
+
