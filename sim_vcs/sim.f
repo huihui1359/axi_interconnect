@@ -6,8 +6,8 @@
 ../dv/common/axi_types_pkg.sv
 ../dv/tb/axi_if.sv
 ../dv/env/axi_env_pkg.sv
-axi_seq_pkg.sv
-axi_test_pkg.sv
+../dv/seq/axi_seq_pkg.sv
+../dv/tc/axi_test_pkg.sv
 
 ../rtl/axi_arbiter_mtos_m3.v
 ../rtl/axi_arbiter_stom_s3.v
@@ -23,5 +23,6 @@ axi_test_pkg.sv
 ../rtl/axi_interconnect.v
 
 ../dv/env/axi_protocol_assertions.sv
+../dv/env/axi_stage6_arbiter_assertions.sv
 ../dv/tb/tb.sv
 dump_fsdb.sv
