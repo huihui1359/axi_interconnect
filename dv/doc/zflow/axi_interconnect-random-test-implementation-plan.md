@@ -1,10 +1,11 @@
 # AXI Interconnect 随机测试用例分阶段实施计划
 
-**Author**: ?, Codex, ?
+**Author**: Codex, ?
 **Created**: 2026-10-21 23:11
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-25 17:50): 按用户确认的 DUT 契约约束 AW/AR/W ID 目标与地址一致，撤销任意读 ID 假设及放宽断言方案，改正 SID 合法组合与自检要求。
 - **v1.0** (2026-10-21 23:11): 建立 constrained-random 测试的分阶段实施路线，定义基础类复用方式、基础设施前置条件、24 个随机测试的阶段归属、准入/退出标准及回归策略。
 
 ---
@@ -25,18 +26,18 @@
 
 ### 2.1 ID 与路由语义
 
-- 上游读请求的 4 位 original ID 是不透明字段，合法取值为完整 `0..15`；AR 路由由地址窗口决定，`ARID[3:2]` 不参与目标选择。
+- 用户于 2026-10-25 确认：AWID、ARID、WID 的高两位必须编码与地址对应的目标 slave。AW/AR 的 RTL 选择逻辑按地址译码，但正向激励仍必须满足 ID/地址一致性；不能把原始读 ID 当作可独立于目标任意选择的字段。S0/S1/S2 对应 `01/10/11`，每个目标仅有低两位的 4 个合法事务 tag。
 - 下游读 SID 应按 `{target_code, master_code, original_id}` 编码，返回上游时恢复低 4 位 original ID。
-- 写数据路由由 `WID[3:2]` 决定。正向写流量必须保证该字段与 AW 地址选择的目标一致。
+- 写数据路由由 `WID[3:2]` 决定，W 本身没有地址；正向写流量必须保证 AWID/WID 与对应 AW 地址选择的目标一致。
 - 地址合法但 `WID[3:2]` 错误的事务不等同于 default route。DUT 不会自动为该错误返回 DECERR；负向测试应检查规定观察窗口内没有错误目标的 W handshake，而不能等待正常 B response。
-- 未命中地址窗口的 AW/AR 属于 default route，按 testplan 单独检查 DECERR、beat 数、返回 ID 和 default FSM 行为。
+- 未命中地址窗口的 AW/AR 属于 default route，按 testplan 单独检查 DECERR、beat 数、返回 ID 和 default FSM 行为。default 的 ID 编码尚未获用户确认，不能自行把 `00` 作为已支持编码；不一致 ID 也不应被等同为 default 请求。
 
 ### 2.2 当前 CR 基础框架的安全默认值
 
 当前基础框架默认配置为：
 
 - 仅生成 S0/S1/S2 三个合法地址窗口的正向事务。
-- 读 ID 在 `0..15` 中随机；写 ID 的高两位与目标 Slave 编码一致。
+- 读写 ID 的高两位均与目标 Slave 编码一致，仅低两位 `0..3` 随机。`constrain_read_id_to_route=1` 为基础配置默认值，正向 CR 配置校验拒绝关闭它。
 - 单 beat，读写 outstanding 均为 1。
 - 每个 Master 关闭 request prefetch，避免下一笔 W 在其 AW 上下文建立前误命中旧 SID。
 - 对 Master 侧 BREADY/RREADY 和 Slave 侧 AWREADY/WREADY/ARREADY 施加随机有限延迟。
@@ -117,7 +118,7 @@ endclass
 
 必须完成：
 
-1. 修正 Stage 6 读通道 ID assertion：上游 4 位 ARID/RID 允许 `0..15`；下游 8 位 SID 只检查新增 target/master tag 和 original ID 保留关系。
+1. 保留 Stage 6 读通道的地址/ID 一致性 assertion；约束正向读激励，使 ARID[3:2] 匹配 ARADDR 目标，并检查下游 SID 目标字段与原始 ID 目标字段一致。自检应验证合法组合通过、不一致输入报预期错误。
 2. 修正 Master driver 的 AW/W 上下文同步，使 prefetch 和多 outstanding 下，W 不能错误消费旧 SID，也不能越过尚未建立的对应 AW 上下文。
 3. 将 Master/Slave monitor 的活动 burst 状态从单一全局状态升级为满足 AXI3 ID interleave 的 per-ID/per-context 跟踪。
 4. 建立统一 seed、最终配置、事务计数和失败上下文日志；失败必须能够用 seed 重现。
@@ -128,7 +129,7 @@ endclass
 退出条件：
 
 - 100～1,000 笔合法单 beat 读写混合 smoke 在多个 seed 下 0 mismatch、0 unexpected error、0 pending。
-- 读 original ID `0..15` 至少各命中一次且 assertion 无误报。
+- 每个真实目标的 4 个合法读 ID 在每个 master 上均至少命中一次；地址/ID 不一致场景只能进入独立预期错误自检。
 - 开启 prefetch 后的受控多 outstanding smoke 不发生 AW/W 上下文错配。
 - 所有失败日志包含 test、seed、有效 cfg、未完成 channel/ID 和 pending 摘要。
 
@@ -183,7 +184,7 @@ endclass
 关键要求：
 
 - 支持每个 Master 最多 4 个 outstanding，并记录实际达到的最大深度。
-- read original ID 继续覆盖完整 `0..15`；不得为迁就旧 assertion 而限制高两位。
+- 读写 original ID 均按 `{target_code, local_tag}` 构造，覆盖所有合法 target/master/local_tag 组合；不要求每个目标覆盖全部 16 个原始 ID。
 - 写正向流量保持 `WID[3:2]` 与目标一致；错误或未登记 WID 使用独立的 no-handshake 观察器。
 - checker 按 SID/ID 维护 beat queue，检查 data、WSTRB、RESP、beat count 和 LAST。
 - 响应乱序必须由显式 responder 策略生成和记录，而不是依赖仿真调度偶然形成。
@@ -233,7 +234,7 @@ endclass
 | `tp_route_matrix_random` | 2 | `axi_cr_base_test` 派生 + default 扩展 | default model、地址分布、SID coverage |
 | `tp_address_random` | 2 | `axi_cr_base_test` 派生 + boundary op | 边界地址生成、default checking |
 | `tp_default_random` | 2 | default CR 专项 vseq/test | default read/write transaction model |
-| `tp_sid_random` | 1 | 直接派生 `axi_cr_base_test` | 读 ID assertion 修正、SID coverage |
+| `tp_sid_random` | 1 | 直接派生 `axi_cr_base_test` | 地址/ID 一致性约束、合法 SID coverage |
 | `tp_wid_random` | 3 | 正向 CR + 负向 WID observer | AW/W 同步、no-handshake checker |
 | `tp_read_outstanding_random` | 3 | outstanding 专项 vseq | per-ID monitor、乱序 responder |
 | `tp_write_outstanding_random` | 3 | outstanding 专项 vseq | AW/W 上下文、per-ID monitor |
@@ -329,10 +330,10 @@ endclass
 
 ## 10. 推荐的下一步
 
-1. 完成 Phase 0 中读 ID assertion 修正，并增加完整 `0..15` 的 assertion selftest。
+1. 按已确认 DUT 契约恢复地址/ID 一致性 assertion，增加合法低两位 tag 穷举与地址/ID 不一致负向 selftest。
 2. 修正 Master driver 的 AW/W 上下文同步，分别验证 prefetch 关闭和开启场景。
 3. 为 CR 基础框架运行 100～1,000 笔多 seed 合法混合流量回归。
-4. 首先实现 `tp_sid_random`，用它验证 3 targets × 3 masters × 16 original IDs 和返回 ID 恢复。
+4. 首先实现 `tp_sid_random`，用它验证每个方向 3 targets × 3 masters × 4 local tags 的 36 个合法组合和返回 ID 恢复。
 5. 随后实现 `tp_backpressure_random`、`tp_progress_random` 和 `tp_concurrency_random`。
 6. 完成 default transaction model 后进入 Phase 2；完成 per-ID burst tracking 后进入 Phase 3。
 

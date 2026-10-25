@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 01:03): 对齐当前 RTL/DV 与 VCS 完整适配：更新 canonical 参数/类型、Stage 6 unmapped-address 边界、18-bin 功能覆盖、arbiter `accept`/`pending_valid` 语义，以及完整回归/selftest/coverage 构建入口。
 - **v1.0** (2026-10-04 20:10): 初版现有 testbench 环境图，提取实例拓扑、文件与实例位置、DUT 接口穿越、控制旋钮和可观测性缺口。
 
 ---
@@ -16,11 +17,11 @@
 | 来源 | `extracted` |
 | 提取模式 | `extract` |
 | 项目 | `axi_interconnect` |
-| 日期 | 2026-10-04 |
+| 日期 | 2026-10-07 |
 | 工作区 | `/home/moxiao/work/axi_interconnect` |
-| 版本 | `06f257ef224e8a5e509968fbe7ef3ee3f551b364` |
+| 版本 | Git `cc800420e5b6942a9e9083562f292050c5955701` + 本次未提交的 `sim_vcs` 适配 |
 | 主文件列表 | `sim/sim.f` |
-| 检查过的备用构建 | `sim_vcs/sim.f`, `sim_vcs/Makefile` |
+| 检查过的 VCS 构建 | `sim_vcs/sim.f`, `sim_vcs/selftest.f`, `sim_vcs/Makefile` |
 | TB 来源 root | `dv/` |
 | TB 顶层 | `tb` |
 | DUT 实例 | `tb.dut` (`axi_interconnect`) |
@@ -34,6 +35,8 @@ The installed Skill package did not contain its referenced shared format, coding
 ## 范围解析
 
 主文件列表包含 12 个 DUT RTL 文件，并通过 package include 展开为 `dv/` 下全部 89 个 SystemVerilog/SystemVerilog 头文件。 除解析接口穿越和 DUT 侧驱动所需内容外，DUT RTL 不在提取范围内。
+
+更新后的 `sim_vcs/sim.f` 与主 `tb` 使用相同的 canonical env/sequence/test packages，但不常驻六个 alternate selftest top；`sim_vcs/selftest.f` 在 `make selftest(s)` 时按 top 追加相应 selftest source。早期 `sim_vcs/axi_seq_pkg.sv`、`sim_vcs/axi_test_pkg.sv` 是未被 filelist 使用的 Stage-1-only legacy manifests，不得与 canonical 同名 package 同时编译。
 
 | 分区 | 数量 | 范围 |
 |---|---:|---|
@@ -49,11 +52,11 @@ No SV/SVH file under `dv/` is present-but-unlisted relative to the recursively e
 ```text
 tb
 ├── clk/rst_n generators                              [时钟/复位/电源]
-├── m_if[0..AXI_DUT_NUM_MASTERS-1] : axi_if          [测试线束]
-├── s_if[0..AXI_DUT_NUM_SLAVES-1]  : axi_if          [测试线束]
-├── master_ports[0..AXI_DUT_NUM_MASTERS-1]
+├── m_if[0..AXI_NUM_MASTERS-1] : axi_if              [测试线束]
+├── s_if[0..AXI_NUM_SLAVES-1]  : axi_if              [测试线束]
+├── master_ports[0..AXI_NUM_MASTERS-1]
 │   └── protocol_assertions : axi_protocol_assertions[协议检查器]
-├── slave_ports[0..AXI_DUT_NUM_SLAVES-1]
+├── slave_ports[0..AXI_NUM_SLAVES-1]
 │   └── protocol_assertions : axi_protocol_assertions[协议检查器]
 ├── stage6_arbiter_bindings                          [bind container]
 ├── dut : axi_interconnect                           [DUT]
@@ -74,7 +77,7 @@ tb
 └── run_test()                                       [factory-selected UVM test]
 ```
 
-The 18 bound arbiter checker instances are present in every `tb` elaboration: four request routers × three request-channel checkers, plus three response routers × two response-channel checkers. Their checking logic is active when `ENABLE_ALWAYS=1` or when `$test$plusargs("UVM_TESTNAME=axi_stage6")` matches.
+The 18 bound arbiter checker instances are present in every `tb` elaboration: four request routers × three request-channel checkers, plus three response routers × two response-channel checkers. Their checking logic is active when `ENABLE_ALWAYS=1` or when `$test$plusargs("UVM_TESTNAME=axi_stage6")` matches. Checker handshake evidence uses the arbiter `*ACCEPT` signal, while lock state is sourced from the internal round-robin `pending_valid`; pointer updates and stalled-grant stability are checked against those two signals.
 
 Six separately selectable selftest modules are compiled by `sim/sim.f` but are not descendants of `tb`: `axi_protocol_assertions_selftest`, `axi_stage3_protocol_assertions_selftest`, `axi_stage6_protocol_assertions_selftest`, `axi_stage6_arbiter_assertions_selftest`, `axi_switch_ref_model_selftest`, and `axi_stage6_ref_model_selftest`.
 
@@ -126,6 +129,8 @@ uvm_test_top : <factory-selected axi_*_test>
 
 未启用的组件仍会被构造、连接并显示在 UVM 树中；其 `enabled` 字段会抑制检查工作。
 
+项目形状的 canonical 参数集中在 `axi_types_pkg`: `AXI_NUM_MASTERS=3`、`AXI_NUM_SLAVES=3`、`AXI_DATA_BYTES=AXI_DATA_WIDTH/8`，且 `AXI_S_ID_WIDTH=AXI_CID_WIDTH+AXI_M_ID_WIDTH`。旧 `AXI_DUT_NUM_*`/`AXI_ENV_NUM_*` 仅为兼容别名。`axi_env_pkg` 定义 canonical `axi_m/s_{req,rsp,event}_t`，项目级环境、模型、checker 与 coverage 使用这些固定类型；generic item/agent/sequencer 仍保持参数化。`tb.validate_build_configuration` 在 elaboration 时拒绝非 3×3、非法数据宽度或不匹配的 MID/CID/LEN 配置。
+
 ## 文件与实例位置表
 
 Each row has one role class. A 来源 that contributes more than one role is split by instance or code region.
@@ -134,7 +139,7 @@ Each row has one role class. A 来源 that contributes more than one role is spl
 |---|---|---|---|
 | `dv/tb/tb.sv` | `tb` wiring and `m_if[]`/`s_if[]` | 测试线束 | system |
 | `dv/tb/tb.sv` | `tb.clk`, `tb.rst_n` initial blocks | 时钟/复位/电源 | system |
-| `dv/tb/axi_if.sv` | `tb.m_if[0..AXI_DUT_NUM_MASTERS-1]`, `tb.s_if[0..AXI_DUT_NUM_SLAVES-1]` | 测试线束 | 互连 |
+| `dv/tb/axi_if.sv` | `tb.m_if[0..AXI_NUM_MASTERS-1]`, `tb.s_if[0..AXI_NUM_SLAVES-1]` | 测试线束 | 互连 |
 | `dv/env/axi_protocol_assertions.sv` | `tb.{master,slave}_ports[*].protocol_assertions` | 协议检查器 | 互连 |
 | `dv/env/axi_stage6_arbiter_assertions.sv` | 18 bound `stage6_*_checker` instances | 协议检查器 | 互连 arbitration |
 | `dv/env/master/axi_m_driver.sv` | `uvm_test_top.env.m_agent_*.driver` | 激励驱动器 | upstream AXI ports |
@@ -148,9 +153,9 @@ Each row has one role class. A 来源 that contributes more than one role is spl
 | `dv/env/checker/axi_channel_forwarding_checker.sv` | `uvm_test_top.env.channel_checker` | scoreboard | all five channels on all ports |
 | `dv/env/axi_basic_event_comparator.sv` | class compiled; no main-env instance | scoreboard | reusable 工具, currently unattached |
 | `dv/env/axi_switch_ref_model.sv` | objects inside system model/checkers/sequences | 参考模型 | routing and SID transforms |
-| `dv/env/axi_system_ref_model.sv` | `uvm_test_top.env.ref_model` | 参考模型 | all six external ports and default route |
+| `dv/env/axi_system_ref_model.sv` | `uvm_test_top.env.ref_model` | 参考模型 | all six external ports and three mapped targets; unmapped addresses are errors |
 | `dv/env/axi_outstanding_tracker.sv` | `uvm_test_top.env.{m,s}_tracker_*` | monitor | per-port outstanding accounting |
-| `dv/env/axi_system_coverage.sv` | `uvm_test_top.env.coverage` | 覆盖率 | master×route×direction |
+| `dv/env/axi_system_coverage.sv` | `uvm_test_top.env.coverage` | 覆盖率 | master×mapped-slave×direction (18 cross bins) |
 | `dv/env/axi_env.sv` | `uvm_test_top.env` | 测试线束 | system |
 | `dv/env/master/axi_m_agent.sv`, `dv/env/slave/axi_s_agent.sv` | `uvm_test_top.env.{m,s}_agent_*` | 工具 | component assembly |
 | `dv/env/axi_virtual_sequencer.sv` | `uvm_test_top.env.virtual_sequencer` | 激励驱动器 | coordinated multiport stimulus |
@@ -217,6 +222,8 @@ m monitor.req_ap ─────────────────────
 | `+UVM_TESTNAME=<name>` / `test` / `TEST` | plusarg / Make variable | Questa: `axi_stage1_single_write_test`; VCS: `axi_stage1_single_read_test` | Selects factory test; names beginning `axi_stage6` also enable bound arbiter checker logic | UVM factory; bound arbiter checkers |
 | `SEED`, `rand` | Make 变量 | Questa: `SEED=0` when `rand=n`; VCS: `SEED=1` | 控制随机化种子；`rand=y` 时生成新的 Questa 种子 | 仿真器 |
 | `reg_times` | Make variable | 20 | Iteration count for repeated regression | `sim/Makefile` `regress` target |
+| `BASE_SEED`, `REG_TIMES` | VCS Make variables | 1, 20 | 分阶段/全量回归的递增 seed 基值，以及单测试重复次数 | `sim_vcs/Makefile` |
+| `SELFTEST` | VCS Make variable | `axi_protocol_assertions_selftest` | 选择六个 alternate-top checker/model selftest 之一 | `sim_vcs/Makefile`, `selftest.f` |
 | `env_cfg.checker_mode` | 配置对象枚举 | `AXI_CHECKER_STAGE1` | 选择阶段 1/2/3/6 检查层级 | `axi_env` |
 | `m_cfg[*].is_active`, `s_cfg[*].is_active` | 配置对象枚举 | `UVM_ACTIVE` | 控制 driver/sequencer 的构造；monitor 始终存在 | agent |
 | `m_cfg[*].port_index`, `s_cfg[*].port_index` | config-object integer | array index | Tags monitor events with 来源 port | monitors |
@@ -239,6 +246,7 @@ All 来源-level `` `ifdef``/`` `ifndef`` `dv/` 中的条件编译均为 include
 | `cov` | Questa Make 变量 | `n` | 启用仿真器代码/语句/表达式/FSM/翻转覆盖率并保存 UCDB | `sim/Makefile` |
 | `UVM_VERBO` / `VERBOSITY` | Make variable → plusarg | `UVM_LOW` | Sets UVM report verbosity | UVM report system |
 | `DUMP` | VCS Make variable | `0` | When `1`, emits `+DUMP_FSDB` and `+FSDB_FILE=...` | `sim_vcs/Makefile` |
+| `COV`, `COV_METRICS`, `COV_DB`, `COV_HIER` | VCS Make variables | `0`, `line+cond+fsm+tgl+branch+assert`, `cov/axi_interconnect.vdb`, `coverage_hier.cfg` | 选择独立 coverage build、串行累积具名 test record；line/condition/FSM/toggle 限定到 `tb.dut`，branch 层次需由 URG 结果复核 | VCS/URG |
 | `+DUMP_FSDB` | plusarg | absent | Enables bound FSDB dumping | `sim_vcs/dump_fsdb.sv` |
 | `+FSDB_FILE=<path>` | value plusarg | `wave.fsdb` fallback | Selects FSDB output path | `sim_vcs/dump_fsdb.sv` |
 | `WORK_DIR`, `BUILD_DIR`, `LOG_DIR`, `WAVE_DIR`, `COV_DIR` | Make 变量 | 工具专用子目录 | Redirects compiled artifacts, logs, waves, and 覆盖率 | 构建系统 |
@@ -247,7 +255,7 @@ All 来源-level `` `ifdef``/`` `ifndef`` `dv/` 中的条件编译均为 include
 
 1. 每组外部 DUT AXI 端口都同时具备引脚级 checker 和 UVM monitor；不存在未观测的外部 DUT 端口组。
 2. 所有 observer 到接口穿越的关系均已解析。未解析的协议/规格/合法性字段：**0**。
-3. 功能覆盖率仅包含 `master × route × direction`. 不会采样 突发长度/类型/大小、响应类别、outstanding 深度、同 ID 与不同 ID 的顺序、反压持续时间、仲裁胜者/公平性、复位交互或 assertion/checker 结果.
+3. 功能覆盖率仅包含 `master × mapped slave × direction` 的 18 个 cross bins。Unmapped address 在 Stage 6 model/checker/coverage 中是 error，不属于 coverage bin。当前不会采样突发长度/类型/大小、响应类别、outstanding 深度、同 ID 与不同 ID 的顺序、反压持续时间、仲裁胜者/公平性、复位交互或 checker 结果。
 4. Stage 1–3 end-to-end checkers consume only M0 and S0. Ports 1 and 2 are pin-monitored and assertion-checked but do not receive equivalent stage-specific TLM checking until 阶段 6 mode.
 5. Bound arbitration checkers activate from a test-name prefix rather than `checker_mode`, so a renamed 阶段 6 test can silently disable them unless `ENABLE_ALWAYS` is overridden.
 6. The pin-level protocol checker covers the implemented AXI3 subset and custom ID rules; it is not a complete AXI3 compliance VIP.
@@ -255,7 +263,8 @@ All 来源-level `` `ifdef``/`` `ifndef`` `dv/` 中的条件编译均为 include
 8. Six selftest 来源 files are alternate top modules and are not reachable as instances from `tb`; they are reached only when selected explicitly as 仿真器 tops.
 9. 不存在 memory model。 Reactive slave responses are sequence-driven and do not maintain addressable storage semantics.
 10. 仓库内不存在总线 VIP；UVM 本身由外部基础设施提供。
-11. The main Questa build can record broad DUT/interface waveforms, while the alternate VCS 构建 provides bound FSDB dumping. There is no common run metadata artifact that records all effective Make/config-object settings for later triage.
+11. Questa 可记录 WLF；VCS 可记录 FSDB，并提供 code/assertion/functional coverage VDB 与 URG 命令。VCS 当前共享 VDB 只适用于串行 writer；并行 coverage campaign 需要为每个 job 分库后另行合并。
+12. DUT 仍实现 default-slave RTL，但当前 Stage 6 正向验证环境不生成 default-route 流量；任何 unmapped request 会被 model/checker/coverage 报为错误，因此 default-slave 行为不是当前回归的验证证据。
 
 ## 文件清单与角色统计
 
@@ -282,6 +291,8 @@ All 来源-level `` `ifdef``/`` `ifndef`` `dv/` 中的条件编译均为 include
 | No per-assertion inventory | 通过 | The map records checker instances and capability boundaries only |
 | Unresolved accounting | 通过 | 0 unresolved fields; Gaps §2 records the same count |
 | File scope accounting | 通过 | `4 + 14 + 5 + 5 + 5 + 25 + 23 + 8 = 89` |
+| VCS canonical build/regression | 通过 | VCS O-2018.09-SP2 full package compile；26/26 tests (seeds 1000–1025) 与 6/6 alternate-top selftests 通过 |
+| VCS coverage data path | 通过（报告受 license 限制） | Coverage build/run 已生成 `axi_interconnect.vdb`；本机 URG 缺少 `VCSTools_Net`/`VT_CoverageURG` license |
 
 ## Skill 合规性
 

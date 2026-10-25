@@ -97,7 +97,9 @@ function axi_cr_cfg::new(string name = "axi_cr_cfg");
   allow_default_read    = 1'b0;
   allow_default_write   = 1'b0;
   allow_illegal_write_id = 1'b0;
-  constrain_read_id_to_route = 1'b0;
+  // DUT contract: both AWID and ARID encode the address-selected target
+  // in bits [3:2]. Positive read traffic must satisfy the same contract.
+  constrain_read_id_to_route = 1'b1;
 endfunction
 
 function void axi_cr_cfg::apply_plusargs();
@@ -180,6 +182,9 @@ function void axi_cr_cfg::validate();
   if (allow_illegal_write_id)
     `uvm_fatal("AXI_CR_CFG",
       "Illegal write IDs require the dedicated negative-test infrastructure")
+  if (!constrain_read_id_to_route)
+    `uvm_fatal("AXI_CR_CFG",
+      "Positive read IDs must encode the address-selected target; mismatches require a dedicated negative test")
 endfunction
 
 function int unsigned axi_cr_cfg::expected_response_count();

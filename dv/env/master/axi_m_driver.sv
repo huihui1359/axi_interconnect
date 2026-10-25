@@ -374,6 +374,17 @@ task axi_m_driver::receive_b();
     while (vif.ARESETn !== 1'b1)
       @(posedge vif.ACLK);
 
+    if (cfg.response_ready_delay_from_valid) begin
+      // Sample after the preceding handshake's NBA updates. Delay zero can
+      // then assert READY before the first rising edge with VALID.
+      do begin
+        @(negedge vif.ACLK);
+      end
+      while ((vif.ARESETn === 1'b1) && (vif.bvalid !== 1'b1));
+      if (vif.ARESETn !== 1'b1)
+        continue;
+    end
+
     if (!bready_latency.randomize())
       `uvm_fatal("AXI_M_BREADY_LATENCY",
                  "Failed to randomize BREADY latency")
@@ -399,6 +410,15 @@ task axi_m_driver::receive_r();
     vif.rready <= 1'b0;
     while (vif.ARESETn !== 1'b1)
       @(posedge vif.ACLK);
+
+    if (cfg.response_ready_delay_from_valid) begin
+      do begin
+        @(negedge vif.ACLK);
+      end
+      while ((vif.ARESETn === 1'b1) && (vif.rvalid !== 1'b1));
+      if (vif.ARESETn !== 1'b1)
+        continue;
+    end
 
     if (!rready_latency.randomize())
       `uvm_fatal("AXI_M_RREADY_LATENCY",

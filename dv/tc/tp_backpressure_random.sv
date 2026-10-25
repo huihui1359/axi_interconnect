@@ -14,6 +14,12 @@ class tp_backpressure_random extends axi_cr_base_test;
     super.new(name, parent);
   endfunction
 
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    foreach (env_cfg.m_cfg[index])
+      env_cfg.m_cfg[index].response_ready_delay_from_valid = 1'b1;
+  endfunction
+
   virtual function void configure_cr_cfg();
     cr_cfg.transaction_count = 10_000;
     cr_cfg.ready_delay_min = 0;

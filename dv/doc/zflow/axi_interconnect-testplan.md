@@ -1,10 +1,11 @@
 # AXI Interconnect 验证计划
 
-**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Author**: Codex
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.1
+**Current Version**: v1.2
 
 **Version Changelog**:
+- **v1.2** (2026-10-25 17:50): 补入 AW/AR/W 地址与 ID 目标一致性契约，重定义正向 SID/ID 覆盖为每目标 4 个合法 tag，并区分非法组合与 default 待确认范围。
 - **v1.1** (2026-10-07 00:19): 将五通道仲裁验证从 wrapper RUN/WAIT FSM 改为 round-robin pending/accept 模型，并更新反压、状态覆盖和压力测试判据。
 - **v1.0** (2026-10-04 20:10): 初版 AXI interconnect 验证计划，定义 F01–F29、定向与约束随机策略、接口/FSM/缓冲验证、负测、stress、performance 和 coverage closure 标准。
 
@@ -29,6 +30,14 @@
 
 架构没有定义数学误差、精度界限、穷举要求或独立 Verification Predicate，因此不包含 §5a。
 
+### 1.1 用户确认的地址与 ID 契约
+
+用户于 2026-10-25 明确：AWID、ARID、WID 的高两位编码目标 slave，并须与地址译码出来的目标一致。AW/AR 仍按地址选择路由；W 无地址，依据 WID[3:2] 并受对应 AW 上下文约束。S0/S1/S2 的合法 ID 分别为 `4..7`、`8..11`、`12..15`，各目标仅低两位 tag 可自由组合。
+
+正向 SID 覆盖为每方向 `3 targets × 3 masters × 4 local tags = 36` 个合法组合；读写合计 72 个。地址/ID 目标不一致属于负向输入，断言必须捕获，不能要求正常正向 PASS。default 的 ID 编码尚未确认，default 专项覆盖不得作为当前正向 CR 已闭合项。
+
+早期静态评审 `axi_interconnect-test-vs-testplan-review.md` 中的 `3×3×16` SID 穷举建议采用旧判据，已由本节替代；该评审的其他历史结论不代表本轮重新评审或验证。
+
 ## 2. Feature-to-Test Mapping
 
 | # | Feature | Sub-Feature | Test Type | Test Case | Stimulus | Pass Criteria | Covergroup |
@@ -36,9 +45,9 @@
 | F01 | 3×3 topology | 每个 M 到每个 S 的 AW/AR/W/B/R 路径 | Directed + CR | `tp_route_matrix_directed`, `tp_route_matrix_random` | 逐一及随机选择 3×3 source/target，读写均覆盖 | 9 个 M→S 组合均到唯一目标；9 个 S→M 返回组合均回 SID.MID 指定 M；scoreboard 0 mismatch | `cg_route_matrix` |
 | F02 | Address decode | S0/S1/S2 三个 4 KiB 窗口 | Directed + CR | `tp_address_boundaries`, `tp_address_random` | 每窗口首/末地址及窗口内随机地址 | `0x0000_0000..0x0000_0fff` 仅到 S0，`0x2000..0x2fff` 仅到 S1，`0x4000..0x4fff` 仅到 S2 | `cg_address_decode` |
 | F03 | Default route | 未命中 AW/AR | Directed + CR | `tp_default_holes`, `tp_default_random` | gaps、窗口相邻地址及 20% 未命中随机地址 | 未命中请求不出现在 S0/S1/S2；读返回 `RRESP=2'b11`，写返回 `BRESP=2'b11` | `cg_default_route` |
-| F04 | SID encode/decode | 目标码、MID、原 ID | Directed + CR | `tp_sid_exhaustive`, `tp_sid_random` | 3 targets×3 masters×16 original IDs | 下游 SID逐位等于 `{01/10/11,01/10/11,ID[3:0]}`；返回 `M_AXI_BID/RID==ID[3:0]` | `cg_sid_map` |
+| F04 | SID encode/decode | 目标码、MID、原 ID | Directed + CR | `tp_sid_exhaustive`, `tp_sid_random` | 3 targets×3 masters×4 legal local tags，读写各36组合 | 下游 SID逐位等于 `{01/10/11,01/10/11,ID[3:0]}`；返回 `M_AXI_BID/RID==ID[3:0]` | `cg_sid_map` |
 | F05 | W routing contract | `WID[3:2]` 目标编码 | Directed + CR | `tp_wid_target_map`, `tp_wid_random` | 合法目标码及故意错误目标码 | 合法 W 只到编码目标；未登记/目标码错误的 W 在 32 个观测周期内无 `S_AXI_WVALID&&S_AXI_WREADY` | `cg_wid_route` |
-| F06 | Read flow | AR登记、R资格、RLAST | Directed + CR | `tp_read_end_to_end`, `tp_read_outstanding_random` | LEN 0..15、ID 0..15、目标/主随机 | 每个已接受 AR 恰返回 `ARLEN+1` beat；payload/RESP/LAST逐 beat 与目标驱动一致；未知 SID R 不被接受 | `cg_read_flow` |
+| F06 | Read flow | AR登记、R资格、RLAST | Directed + CR | `tp_read_end_to_end`, `tp_read_outstanding_random` | LEN 0..15、ID高两位与目标一致、低两位0..3、目标/主随机 | 每个已接受 AR 恰返回 `ARLEN+1` beat；payload/RESP/LAST逐 beat 与目标驱动一致；未知 SID R 不被接受 | `cg_read_flow` |
 | F07 | Write flow | AW登记、W资格、B返回 | Directed + CR | `tp_write_end_to_end`, `tp_write_outstanding_random` | LEN 0..15、ID、WSTRB、数据和 B response 随机 | 每个 AW 的 `AWLEN+1` 个 W beat按目标码送达，最后 beat `WLAST=1`；B 回到 MID 指定 M 且 BID 为原 ID | `cg_write_flow` |
 | F08 | Concurrent targets | 三个目标并行 | Directed + CR | `tp_three_target_parallel`, `tp_concurrency_random` | M0/M1/M2 同拍访问不同目标，混合读写 | 三个目标均可在同一周期观察各自通道握手；三条事务均只出现一次且数据 0 mismatch | `cg_concurrency` |
 | F09 | M→S arbitration | S0/S1/S2/default 的 AW/W/AR 三路轮询 | Directed + CR | `tp_mtos_round_robin`, `tp_mtos_arb_random` | 3 M 同时持续请求同一目标，插入随机 ready stalls | ready持续为 1 时每 3 个 eligible handshake内 M0/M1/M2 各获胜至少 1 次；grant one-hot-or-zero | `cg_mtos_arb` |
@@ -69,10 +78,10 @@
 
 | Test Class | Randomised Dimensions | Constraints | Checking Strategy | Min Transaction Count |
 |---|---|---|---|---:|
-| `tp_route_matrix_random` | M/S选择、读写、地址、ID、LEN | 三个合法窗口各25%，未命中25%；ID 0..15 | 窗口函数预测目标；SID函数预测下游ID；端到端scoreboard | 10,000 |
+| `tp_route_matrix_random` | M/S选择、读写、地址、ID、LEN | 三个合法窗口各25%，未命中25%；真实目标ID高两位匹配地址、低两位0..3；default编码待确认 | 窗口函数预测目标；SID函数预测下游ID；端到端scoreboard | 10,000 |
 | `tp_address_random` | AW/AR地址、边界距离、M端口 | S0/S1/S2/default各25%；距窗口边界0/1字节权重40% | 独立高位比较函数预测唯一目标；`p_decode_onehot` | 10,000 |
 | `tp_default_random` | 未命中AW/AR、LEN、ID、读写比例 | 只生成三个4 KiB窗口之外地址；read/write各50% | default读写事务模型检查DECERR、beat数和ID | 10,000 |
-| `tp_sid_random` | target code、MID、original ID、返回来源 | 3×3合法组合均匀；ID 0..15均匀 | 纯拼接函数计算SID，返回函数取低4位 | 10,000 |
+| `tp_sid_random` | target code、MID、original ID、返回来源 | 3×3目标/master组合均匀；ID高两位匹配目标、低两位0..3均匀 | 纯拼接函数计算SID，返回函数取低4位 | 10,000 |
 | `tp_wid_random` | WID目标码、MID、ID、membership | 合法目标码95%，错误/未登记5% | AW登记模型预测W eligible与唯一目标 | 10,000 |
 | `tp_read_outstanding_random` | 3 M、3 S、ARID、ARLEN、R返回顺序、gap、RREADY | outstanding 0..4；LEN 0/1/15权重各15%；只返回已发AR SID，另以5%注入非法SID | 每M按ID维护期望R队列；非法SID期望无握手 | 10,000 |
 | `tp_write_outstanding_random` | AWID/WID、目标、LEN、WSTRB、data、AW/W相对时序、B顺序 | WID[3:2]与目标一致占95%，错误占5%；最多4 outstanding | AW模型登记SID，逐beat预测W目标，B按MID返回 | 10,000 |
@@ -125,7 +134,7 @@
 ### 4.3 W 接口
 
 - W可早于、同拍或晚于对应AW进入入口FIFO；只有 AW SID登记并经 `reorder` 注册资格后才允许目标侧握手。
-- 对每个目标码 `WID[3:2]=01/10/11` 和每个MID覆盖至少16个原ID值。
+- 对每个目标码 `WID[3:2]=01/10/11` 和每个 MID 覆盖低两位的全部 4 个合法 tag；WID 与对应 AWID 匹配。
 - W反压期间 `WID/WDATA/WSTRB/WLAST` 必须稳定；一个burst中 `WLAST`只在第 `AWLEN+1` beat为1。
 
 ### 4.4 B/R 接口
@@ -145,10 +154,10 @@
 | Sub-Feature | Directed Stimulus | Expected Result |
 |---|---|---|
 | AW/AR地址窗口 | `0x0000_0000,0x0000_0fff,0x0000_1000,0x0000_1fff,0x0000_2000,0x0000_2fff,0x0000_3000,0x0000_3fff,0x0000_4000,0x0000_4fff,0x0000_5000,0xffff_ffff` | 三个闭区间分别唯一命中S0/S1/S2；其余命中default |
-| AW/AR SID编码 | 对9个M×S组合和ID `0,1,7,15` | SID分别等于 `{target_code,master_code,ID}`；共36个向量全部逐位匹配 |
-| W SID编码 | WID目标码 `01/10/11`，MID `01/10/11`，ID 0..15 | 内部候选SID等于 `{WID[3:2],MID,WID[3:0]}`；只允许命中AW表的候选通行 |
-| B返回截取 | SID低位取 `0,1,7,15` | `M_AXI_BID`逐位等于SID `[3:0]`，BRESP不改变 |
-| R返回截取 | SID低位取 `0,1,7,15`，随机RDATA/RRESP/RLAST | `M_AXI_RID==SID[3:0]`，RDATA/RRESP/RLAST逐位不改变 |
+| AW/AR SID编码 | 对9个M×S组合和ID `{target_code,local_tag}`，local_tag=0..3 | SID分别等于 `{target_code,master_code,ID}`；共36个向量全部逐位匹配 |
+| W SID编码 | WID目标码 `01/10/11`，MID `01/10/11`，低两位tag 0..3且匹配AWID | 内部候选SID等于 `{WID[3:2],MID,WID[3:0]}`；只允许命中AW表的候选通行 |
+| B返回截取 | SID低4位取对应目标的4个合法ID | `M_AXI_BID`逐位等于SID `[3:0]`，BRESP不改变 |
+| R返回截取 | SID低4位取对应目标的4个合法ID，随机RDATA/RRESP/RLAST | `M_AXI_RID==SID[3:0]`，RDATA/RRESP/RLAST逐位不改变 |
 | AW/AR属性透明传递 | LEN 0..15，SIZE 0..7，BURST 0..3 | 目标侧ADDR/LEN/SIZE/BURST与输入逐位相同，不做对齐或合法性修正 |
 | W数据透明传递 | WDATA `0,all1,0xaaaa5555,random`，WSTRB `0,1,5,f` | 目标侧DATA/STRB/LAST逐位相同 |
 | Default read payload | LEN 0,1,15 | 分别输出1、2、16个 `RDATA=32'hffff_ffff,RRESP=2'b11` beat，最后一个RLAST=1 |
@@ -376,7 +385,7 @@ Random suite完成条件：§3每类达到最少事务数，所有非illegal cov
 | `cg_route_matrix` | master×target×direction | 3×3×{read,write} | 100% | 覆盖18组合 |
 | `cg_address_decode` | address region | S0-first/mid/last, S1, S2, gaps, below/above | 100% | 与AW/AR交叉 |
 | `cg_default_route` | channel×LEN | AW/AR × 0/1/2..14/15 | 100% | 与DECERR交叉 |
-| `cg_sid_map` | target_code×MID×ID | 3×3×{0,1..14,15} | 100% | ID完整16值另设coverpoint |
+| `cg_sid_map` | target_code×MID×local_tag | 每方向3×3×4合法组合 | 100% | ID高两位匹配target；非法组合进入负测，default编码待确认 |
 | `cg_wid_route` | WID target×eligibility | 01/10/11/illegal × hit/miss | 100% | illegal为负测bin |
 | `cg_read_flow` | master×target×LEN×response order | 3×3×4 LEN classes×in/out order | ≥90% cross | LEN classes 0,1,2..14,15 |
 | `cg_write_flow` | master×target×LEN×WSTRB | 3×3×4×{0,single,partial,all} | ≥90% cross | 数据pattern单独cover |

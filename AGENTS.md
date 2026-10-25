@@ -1,5 +1,9 @@
 # Repository Documentation Rules
 
+## Project Navigation
+
+先阅读根目录 [README.md](README.md) 的简要 overview。当前 DUT 在 `rtl/`，当前验证环境在 `dv/`，仿真在 `sim_vcs/` 中运行；其他以 `sim_vcs` 开头的目录均为备份，`uvm_tb/` 为过时环境，调试时直接忽略。
+
 ## Versioned Markdown Header
 
 新建或实质更新本仓库中的规格、架构、微架构、验证计划、testbench plan、设计说明和评审报告等 Markdown 文档时，文档必须以以下 header 开头：
@@ -7,7 +11,7 @@
 ```markdown
 # <Document Title>
 
-**Author**: <human author or ?>, <tool author>, <exact model name or ?>
+**Author**: <tool author>, <exact model name or ?>
 **Created**: YYYY-MM-DD HH:MM
 **Current Version**: v<major>.<minor>
 
@@ -23,7 +27,7 @@
 - 时间使用项目本地时区 `Asia/Shanghai`，格式固定为 `YYYY-MM-DD HH:MM`。
 - 新文档从 `v1.0` 开始。后续实质修改必须更新 `Current Version`，并在 changelog 顶部添加同版本记录；最新记录在最上方。
 - 保留最初的 `Created` 值，不得在后续编辑中改写。若旧文档缺少 header，应优先从可靠的版本历史或文件记录恢复创建时间；无法确认时使用补录时间，并在 changelog 中说明。
-- `Author` 依次写有依据的人类作者、工具作者和精确模型名，例如 `Wang Jianghao, Codex, GPT-5.6-Solar`。模型名必须精确到具体变体，不得只写 `GPT-5.6`、`GPT-5` 或泛称 AI。
-- 无法从用户说明、已有 header、版本历史或其他可靠项目记录确认人类作者或模型时，在对应位置写 `?`，例如 `?, Codex, ?`；不得臆测。交付结果必须主动列出所有 `?` 并提示用户补全。
+- `Author` 依次写有依据的工具作者,精确模型名，例如 `Codex, GPT-6.1-Sol`。模型名必须精确到具体变体，不得只写 `GPT-5.6`、`GPT-5` 或泛称 AI。
+- 无法从用户说明、已有 header、版本历史或其他可靠项目记录确认模型时，在对应位置写 `?`，例如 `Codex, ?`；不得臆测。交付结果必须主动列出所有 `?` 并提示用户补全。
 - Changelog 摘要应说明本版本的实质变化和范围，不使用“更新文档”等无信息描述。
 - 纯排版、拼写修复可不升版本；一旦修改需求、接口、行为、验证策略、pass criteria、coverage 或实现计划，就必须升版本并记录。

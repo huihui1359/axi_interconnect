@@ -1,10 +1,11 @@
 # AXI Interconnect UVM Testbench Plan
 
-**Author**: Wang Jianghao, Codex, GPT-5.6-Solar
+**Author**: Codex
 **Created**: 2026-10-05 00:57
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-25 17:50): 同步已确认的地址与 ID 一致性契约，将正向 SID cross 改为每目标 4 个合法 tag，保留不一致输入的负向验证。
 - **v1.0** (2026-10-05 00:57): 初版独立 UVM testbench plan，定义六个全新 AXI agents、reference model、scoreboard、protocol/internal checkers、coverage、构建配置与测试组织，并完整映射 testplan F01–F29。
 
 ---
@@ -304,7 +305,7 @@ Driver 将 burst item 拆成 beats；monitor 保留每次外部握手的原始 p
 
 - AW/W/AR 可独立启动；W 可早于、同拍或晚于 AW 0–8 cycles。
 - 每通道支持 valid-before-ready、ready-before-valid、同拍、back-to-back 和 1-cycle gap。
-- LEN 0..15、SIZE 0..7、BURST 0..3、ID 0..15、全部 WSTRB 和重点 data patterns。
+- LEN 0..15、SIZE 0..7、BURST 0..3、全部 WSTRB 和重点 data patterns。正向 AW/AR/W 的 ID 高两位必须编码地址所选目标，低两位 tag 取 0..3；W 无地址，必须匹配对应 AW。地址/ID 不一致属于独立负向流量。default ID 编码待确认。
 - Target responder 支持 B/R delay、跨 SID reorder、R beat interleave、RESP/data 注入。
 - READY stall 支持 0、1、2–5、6–15、16+ cycles 与随机波形。
 - Outstanding 1..4；pipeline sequence 可在上一 transaction 未完成时发送下一笔。
@@ -475,7 +476,7 @@ Scoreboard 之外独立实现：五通道 stable、decode onehot、grant onehot0
 
 - Endpoint bins：M0/M1/M2；S0/S1/S2；涉及返回源时另含 SD(default)。
 - Address bins：每窗口 first/mid/last、窗口间 gaps、最低窗口以下和最高窗口以上；分别与 AW/AR cross。
-- ID bins：original ID 0..15 全值；SID cross 为 3 target codes × 3 MIDs × 16 IDs。
+- ID bins：真实目标 S0/S1/S2 的合法 original ID 分别为 4..7、8..11、12..15；正向 SID cross 为每方向 3 target codes × 3 MIDs × 4 local tags。其他 target/ID 组合属于负向检查，不能作为正向覆盖要求。
 - LEN bins：0、1、2..14、15；burst interleave 为 none/two/three；LAST position 只有最终 beat 为 legal。
 - WSTRB bins：zero、single-bit、partial-multi-bit、all-one；data pattern bins 为 zero/all-one/walking-one/`0xaaaa5555`/random。
 - Stall bins：0、1、2..5、6..15、16+；occupancy bins 为 FIFO/SID 的 0/1/2/3/4（需要 testplan 特指时汇总为 empty/mid/full）。

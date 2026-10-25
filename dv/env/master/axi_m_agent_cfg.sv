@@ -24,6 +24,8 @@ class axi_m_agent_cfg #(
   int unsigned            max_read_outstanding; //允许同时存在的未完成的读事务数量
   int unsigned            max_write_outstanding;
   bit                     request_prefetch_enabled;
+  // Start B/R READY delay at response VALID to measure actual backpressure.
+  bit                     response_ready_delay_from_valid;
 
   `uvm_object_param_utils_begin(
     axi_m_agent_cfg #(ADDR_WIDTH, DATA_WIDTH, ID_WIDTH, LEN_WIDTH)
@@ -33,6 +35,7 @@ class axi_m_agent_cfg #(
     `uvm_field_int(max_read_outstanding, UVM_DEFAULT)
     `uvm_field_int(max_write_outstanding, UVM_DEFAULT)
     `uvm_field_int(request_prefetch_enabled, UVM_DEFAULT)
+    `uvm_field_int(response_ready_delay_from_valid, UVM_DEFAULT)
   `uvm_object_utils_end
 
   function new(string name = "axi_m_agent_cfg");
@@ -44,6 +47,7 @@ class axi_m_agent_cfg #(
     max_read_outstanding  = 4;
     max_write_outstanding = 4;
     request_prefetch_enabled = 1'b1;
+    response_ready_delay_from_valid = 1'b0;
   endfunction
 
 endclass

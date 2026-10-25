@@ -2,9 +2,10 @@
 
 **Author**: Wang Jianghao, Codex, GPT-5.6-Solar
 **Created**: 2026-10-04 20:10
-**Current Version**: v1.0
+**Current Version**: v1.1
 
 **Version Changelog**:
+- **v1.1** (2026-10-07 01:03): 对齐当前实现与 VCS 完整适配：修正 Stage 6 为 9 个测试/18 个覆盖 cross，记录 unmapped-address error 边界、canonical 参数/类型、arbiter `accept`/`pending_valid` 语义，以及 VCS 全回归、selftest、FSDB 与 coverage 流程。
 - **v1.0** (2026-10-04 20:10): 初版现有 UVM 验证环境概览，记录环境层次、agents、sequence、checker、reference model、coverage 与构建运行方式。
 
 ---
@@ -23,9 +24,11 @@
 | 时钟/复位 | 名义 100 MHz TB 时钟（半周期 `#5ns`）；低有效复位在两个上升沿和一个下降沿后释放 |
 | 已实现源范围 | `dv/` 下 89 个 SV/SVH 文件 |
 | DUT 规格参考 | `rtl/doc/axi_interconnect-architecture-extracted.md`；`rtl/doc/axi_interconnect-microarchitecture-extracted.md` 及组件文档 |
-| 验证环境图 | `dv/doc/zsp_aiflow/axi_interconnect-tb-environment-map.md` |
+| 验证环境图 | `dv/doc/zflow/axi_interconnect-tb-environment-map.md` |
 
 面向 DUT 的接口实现 AW/W/B/AR/R ready-valid 通道，地址/数据宽度为 32 位，上游 ID 为 4 位，下游 ID 为 8 位，AXI3 长度字段为 4 位。验证环境驱动并观测全部三个上游端口和三个下游端口。
+
+`axi_types_pkg` 是 elaborated shape 的单一来源：`AXI_NUM_MASTERS/SLAVES=3`、`AXI_DATA_BYTES=AXI_DATA_WIDTH/8`、`AXI_S_ID_WIDTH=AXI_CID_WIDTH+AXI_M_ID_WIDTH`。旧 `AXI_DUT_NUM_*`/`AXI_ENV_NUM_*` 只是兼容 alias。`axi_env_pkg` 提供 canonical master/slave request、response、event typedef；项目级 environment/model/checker/coverage 使用固定 typedef，generic item/agent/sequencer 继续参数化。`tb` 在 elaboration 时检查 3×3 topology、数据宽度和 MID/CID/LEN 宽度约束。
 
 ## 2. 架构
 
@@ -84,7 +87,7 @@
 | S0 | `0x0000_0000–0x0000_0fff` | `01` |
 | S1 | `0x0000_2000–0x0000_2fff` | `10` |
 | S2 | `0x0000_4000–0x0000_4fff` | `11` |
-| 默认值 | all other addresses | no real target; expect `DECERR` |
+| Unmapped | all other addresses | DUT 含 default-slave RTL，但当前 Stage 6 环境将此类请求判为 error，不作为正向测试流量 |
 
 对于真实目标，期望的下游 SID 为 `{target_tag, master_tag, original_id[3:0]}`. Master 标签为 M0=`01`, M1=`10`, M2=`11`.
 
@@ -123,9 +126,9 @@
 | 单操作 | 专用 master 单读/单写序列和简单响应式 slave 序列 |
 | 阶段 2 | 场景基类支持突发、请求/响应延迟、beat 间隔、停顿、AW/W 顺序、并行读写和随机 READY 冒烟 |
 | 阶段 3 | 场景基类增加多 outstanding 操作、同/不同 ID 顺序、读写乱序响应、ID 映射和 outstanding 停顿 |
-| 阶段 6 | virtual sequencer 协调六个物理 sequencer；十个 virtual sequence 覆盖路由/ID 矩阵、并行目标、请求/响应仲裁、跨 master 同 ID、多端口 outstanding、默认路由和随机冒烟 |
+| 阶段 6 | virtual sequencer 协调六个物理 sequencer；9 个 virtual sequence 覆盖路由/ID 矩阵、并行目标、请求/响应仲裁、跨 master 同 ID、多端口 outstanding 和随机冒烟 |
 
-该 package 包含 27 个可运行的具体 UVM 测试: 2 Stage 1, 7 阶段 2, 8 阶段 3, and 10 阶段 6. 另外 4 个 base test 类提供公共配置和完成检查。 逐测试追踪不在本文档的 `testbench` 范围内。
+该 package 包含 26 个可运行的具体 UVM 测试：Stage 1/2/3/6 分别为 2/7/8/9 个。另外 4 个 base test 类提供公共配置和完成检查，不列入回归。逐测试追踪不在本文档的 `testbench` 范围内。
 
 ### 4.4 参考模型与检查组件
 
@@ -135,9 +138,9 @@
 | `stage2_checker` | 阶段 2 | M0↔S0 突发/通道/请求/响应比较与计数 |
 | `stage3_checker` | 阶段 3 | M0↔S0 SID 映射、outstanding 深度、同 ID 与不同 ID 顺序 |
 | `axi_switch_ref_model` | 阶段 3/6 使用的对象 | 地址解码、W 目标解码、SID 编解码、ID 恢复 |
-| `ref_model` | 阶段 6 | 预测所有端口的目标请求、master 响应和默认响应 |
+| `ref_model` | 阶段 6 | 预测所有端口到三个 mapped target 的请求和 master 响应；unmapped address 报错 |
 | `scoreboard` | 阶段 6 | 按端口/方向/ID 匹配期望与实际的 slave 请求和 master 响应 |
-| `channel_checker` | 阶段 6 | 比较逐次转发握手和默认响应负载 |
+| `channel_checker` | 阶段 6 | 比较三个 mapped target 的逐次转发握手；unmapped address 报错 |
 | `m_tracker_0..2`, `s_tracker_0..2` | 阶段 6; 阶段 3 中为索引 0 | 跟踪 AW/WLAST/B 与 AR/RLAST 守恒以及最大 outstanding 数 |
 | six external protocol checkers | 始终实例化 | 停顿稳定性、复位输出、X 检测、因果关系/beat 计数、outstanding、自定义 ID/路由规则 |
 | 18 bound arbiter checkers | 阶段 6 名称前缀或强制启用 | one-hot/valid grant、轮询预期、指针更新、停顿锁定 |
@@ -166,13 +169,13 @@ checker 层级通过 `env_cfg.checker_mode`; 互斥选择，并非累加启用�
 
 验证环境将定向场景类与受约束的随机事务和延迟字段结合。
 
-- Master 请求项约束合法突发属性、突发形状、W 数据/字节使能、4 KiB 边界和延迟；场景序列选择路由/默认地址窗口。
+- Master 请求项约束合法突发属性、突发形状、W 数据/字节使能、4 KiB 边界和延迟；Stage 6 正向场景只选择 S0/S1/S2 映射窗口。
 - Slave 响应式序列消费观测到的请求，并以可配置的响应/beat 间隔生成匹配的 B/R 响应。
 - slave agent 上的 AW/W/AR 以及 master agent 上的 B/R 的 ready 生成彼此独立。
 - 阶段 2 特意将 M0 限制为一个 outstanding 请求，并禁用请求预取。
 - 阶段 3 允许 M0 最多四个 outstanding 请求，并测试顺序和 ID 行为。
 - 阶段 6 启用所有端口，将 outstanding 上限设为四，启用预取，并通过 virtual sequencer 协调流量。
-- 默认路由序列期望 `DECERR`；默认读期望 `LEN+1` 个 beat 的全 1 数据。
+- DUT 的 default-slave RTL 仍然存在，但 Stage 6 default-route sequence/test 已删除；system model、channel checker 和 coverage collector 遇到 unmapped address 均报告 UVM error。
 
 验证环境未实现可寻址 memory model。返回数据由 sequence 生成，而非从持久化存储读取。
 
@@ -183,26 +186,26 @@ checker 层级通过 `env_cfg.checker_mode`; 互斥选择，并非累加启用�
 1. 接口合法性：外部引脚级 assertion 模块检查 ready-valid 稳定性、复位行为、未知控制/负载值、突发 beat 计数、响应因果关系、outstanding 边界和项目特定 ID 映射。
 2. 本地 monitor 一致性：monitor 重构请求和响应，检测未匹配上下文，并要求 pending 状态在 `check_phase` 中清空。
 3. 阶段专用端到端比较：阶段 1–3 逐步增加突发、outstanding 和顺序能力，对 M0↔S0 进行检查。
-4. 系统预测：在阶段 6 中，参考模型独立于下游观测预测路由/SID/default 行为。
+4. 系统预测：在阶段 6 中，参考模型独立于下游观测预测三个 mapped target 的路由/SID 行为，并拒绝 unmapped request。
 5. 系统匹配： scoreboard 比较完整请求和响应；channel checker 独立比较各次握手。
 6. 计数守恒：每端口 tracker 检测 B/R 下溢和非空 outstanding 状态。
-7. 仲裁内部状态：bound checker 观测内部仲裁器 grant、指针、ready、request 和锁状态。
+7. 仲裁内部状态：bound checker 观测 request/grant/last-winner，以 `*ACCEPT` 作为 handshake 证据，以 round-robin `pending_valid` 作为 lock 状态，检查指针更新与 stalled grant 稳定性。
 8. 测试完成：测试等待期望响应，检查 mismatch/pending 计数器和 agent drain 状态，仅在 UVM error 为零时输出 `AXI_TC_PASS`。
 
-阶段 6 system model 和 channel checker 都显式处理默认路由，从事务级和 beat 级交叉检查默认响应。
+阶段 6 system model、channel checker 与 coverage collector 对 unmapped request 的共同策略是报错；它们不构成 default-slave 功能验证。
 
 ## 8. 覆盖率模型
 
 已实现的功能覆盖率为 `axi_system_coverage.system_cg`，仅在阶段 6 模式下启用。它对每个观测到的 master 请求采样，包含：
 
 - master port: bins 0, 1, 2;
-- decoded route: S0, S1, S2, default;
+- decoded slave: S0, S1, S2;
 - direction: read/write;
 - cross: `master × route × direction`.
 
-这形成 24 个预期交叉组合。它体现 source/target/direction 可达性，但未实现 `rtl/doc/axi_interconnect-testplan.md` §14 所述的更广泛覆盖率模型。具体而言，实现中没有突发长度/类型/大小、WSTRB/数据模式、响应码、SID 字段、outstanding 深度、仲裁顺序/公平性、停顿、FIFO/SID 占用、复位、默认 FSM 状态、负向场景或 checker 结果的功能覆盖点。
+这形成 18 个预期交叉组合。它体现 source/三个 mapped target/direction 可达性；unmapped address 不采样而是报错。该模型尚未实现 testplan §14 的更广泛覆盖目标，包括突发长度/类型/大小、WSTRB/数据模式、响应码、SID 字段、outstanding 深度、仲裁顺序/公平性、停顿、FIFO/SID 占用、复位、default FSM 状态、负向场景或 checker 结果。
 
-仿真器代码覆盖率通过 with `cov=y` in the Questa flow. 检查过的 VCS Makefile 中未提供覆盖率选项。 in the inspected VCS Makefile.
+Questa 通过 `cov=y` 保存 UCDB。VCS 通过 `COV=1`/`make coverage` 收集 line、condition、FSM、toggle、branch、assertion 与 functional covergroup 数据，使用 `coverage_hier.cfg` 将 line/condition/FSM/toggle 限定到 `tb.dut`，并以 `TEST_SEED` 为 `cm_name` 串行累积到 VDB；VCS O-2018 未在 `-cm_hier` 帮助中明确承诺 branch 过滤，因此应在 `make cov_report` 的 URG hierarchy 中复核。功能覆盖达到 100% 仍只代表上述 18 个 cross，不代表 testplan closure。
 
 ## 9. 构建与运行配置
 
@@ -214,9 +217,11 @@ checker 层级通过 `env_cfg.checker_mode`; 互斥选择，并非累加启用�
 
 ### 9.2 VCS 配置
 
-`sim_vcs/sim.f` 是聚焦于阶段 1 的配置。它替换为精简的 `axi_seq_pkg.sv` 和 `axi_test_pkg.sv`，排除阶段 2/3/6 测试及所有独立 selftest，并将 `axi_fsdb_dump` bind 到 `tb`。其控制项为 `TEST`、`SEED`、`VERBOSITY` 和 `DUMP`；`DUMP=1` 时添加 `+DUMP_FSDB` 和生成的 `+FSDB_FILE` 路径。
+`sim_vcs/sim.f` 使用 canonical `dv/seq/axi_seq_pkg.sv` 与 `dv/tc/axi_test_pkg.sv`，与完整环境共享 26 个 concrete UVM test，并编译 external protocol assertions、18 个 bound arbiter checker 和 `tb`-local FSDB instrumentation。普通与 coverage build 分别位于 `build/nocov`、`build/cov`，防止误复用不同插桩的 executable。
 
-The two profiles are not 来源-equivalent. 结果s from the VCS 配置 must not be treated as 阶段 2/3/6 覆盖率 evidence.
+主要入口为：`make run TEST=... SEED=...`、`make dump`、`make stage{1,2,3,6}_regress`、`make regress`（26 tests）、`make repeat`、`make list-tests`。六个 standalone checker/model top 通过独立的 `selftest.f`、per-top build directory 和 `make selftests` 运行；该 filelist 特意排除固定 `bind tb` 的 FSDB block。
+
+`make coverage` 以唯一 `TEST_SEED` record 名串行累积 VCS VDB，`make cov_report` 生成 URG text/HTML 报告。共享 VDB 不支持并行 writer；并行 campaign 应使用 job-local VDB 后再合并。FSDB 与 coverage 可共存，但覆盖回归默认关闭波形，失败 seed 再单独 dump。
 
 ## 10. 各阶段已实现能力
 
@@ -225,20 +230,22 @@ The two profiles are not 来源-equivalent. 结果s from the VCS 配置 must not
 | 1 | M0, S0 | single read/write closed loop | channel event checker |
 | 2 | M0, S0 | bursts, delays, gaps, stalls, parallel R/W | event + request/response checker |
 | 3 | M0, S0 | up to four outstanding, SID mapping, out-of-order across IDs | 阶段 3 checker + two trackers |
-| 6 | M0–M2, S0–S2 | full 3×3 routing, arbitration, parallel traffic, default route | system model + scoreboard + channel checker + six trackers + bound arbiter checkers |
+| 6 | M0–M2, S0–S2 | full 3×3 mapped routing, arbitration and parallel traffic; unmapped is an error | system model + scoreboard + channel checker + six trackers + bound arbiter checkers |
 
 Stages 4 and 5 are not represented as separate checker modes or test groups in the implemented 来源 tree.
 
 ## 11. 已知缺口与评审备注
 
 - 功能覆盖率范围明显小于 the 29-feature testplan 覆盖率 model.
+- DUT default-slave RTL 尚在，但当前 Stage 6 正向回归拒绝 unmapped request，因此没有 default-slave verification evidence。
 - Stage 1–3 TLM checking is restricted to M0↔S0; ports 1/2 rely on external protocol checkers until 阶段 6.
 - The external assertion module checks a 项目-specific AXI3 subset, not full AXI3 compliance.
 - Bound arbiter checkers depend on the `UVM_TESTNAME=axi_stage6` prefix and can be skipped by test renaming.
 - 验证环境没有持久 memory model, so memory semantics and read-after-write content are not verified.
 - `axi_basic_event_comparator` is available but unused by the main environment.
 - Six standalone selftests are compiled in the complete manifest but require alternate 仿真器 tops; they do not execute during a normal `tb` run.
-- VCS 配置有意精简，与完整 Questa manifest 不一致。
+- VCS 与 Questa 都可运行 26 个 concrete tests 和 6 个 selftests；变量命名、artifact 格式和 coverage database 格式仍是仿真器专用的。
+- VCS coverage VDB 当前按串行 campaign 设计，不支持多个 job 同时写同一数据库；本机 URG 报告还依赖 `VCSTools_Net` 或 `VT_CoverageURG` license。
 - 没有统一的机器可读运行记录同时捕获 seed, selected checker mode, agent config, latency settings, build profile, and waveform/覆盖率 options together.
 
 ## 12. 源文件映射
@@ -258,7 +265,7 @@ Stages 4 and 5 are not represented as separate checker modes or test groups in t
 | Tests | `dv/tc/*` |
 | Selftests | `dv/tb/*selftest.sv` |
 | Complete build | `sim/sim.f`, `sim/Makefile` |
-| Focused VCS 构建 | `sim_vcs/sim.f`, `sim_vcs/Makefile`, `sim_vcs/dump_fsdb.sv` |
+| Complete VCS build | `sim_vcs/sim.f`, `sim_vcs/selftest.f`, `sim_vcs/Makefile`, `sim_vcs/dump_fsdb.sv`, `sim_vcs/coverage_hier.cfg` |
 
 ## 13. 生成校验
 
@@ -271,3 +278,6 @@ Stages 4 and 5 are not represented as separate checker modes or test groups in t
 | 覆盖率摘要仅描述已实现的 covergroup | 通过 |
 | 构建配置差异已明确 | 通过 |
 | 未将未实现的组件或覆盖点描述为已存在 | 通过 |
+| VCS 完整 UVM regression | 通过：26/26 tests，seeds 1000–1025 |
+| VCS standalone selftests | 通过：6/6 PASS markers |
+| VCS coverage 数据写入 | 通过：coverage-enabled Stage 6 run 写入 VDB；URG report 在本机受 coverage-tool license 限制 |
